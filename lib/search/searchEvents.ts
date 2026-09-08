@@ -15,6 +15,7 @@ import {
   buildRouteCorridor,
   isPointInRouteCorridor,
 } from "@/lib/search/buildRouteCorridor";
+import { attachDetourMinutes } from "@/lib/search/attachDetourMinutes";
 import type { SearchParams } from "typesense/lib/Typesense/Documents";
 
 export { type TypesenseHitMeta, type SearchHighlight };
@@ -214,7 +215,7 @@ export async function searchEvents(request: SearchRequest): Promise<SearchRespon
       .search(searchParams);
 
     const hits = result.hits || [];
-    const events: Event[] = hits.map((hit) =>
+    let events: Event[] = hits.map((hit) =>
       mapTypesenseDocToEvent(
         hit.document,
         {
@@ -227,6 +228,10 @@ export async function searchEvents(request: SearchRequest): Promise<SearchRespon
         request.filters?.categories
       )
     );
+
+    if (routeCorridor && request.route) {
+      events = await attachDetourMinutes(events, request.route);
+    }
 
     const tookMs = Date.now() - startTime;
 
@@ -330,6 +335,10 @@ export async function searchEvents(request: SearchRequest): Promise<SearchRespon
         }
         return evt;
       });
+    }
+
+    if (routeCorridor && request.route) {
+      fallback = await attachDetourMinutes(fallback, request.route);
     }
 
     const tookMs = Date.now() - startTime;

@@ -31,6 +31,7 @@ export interface TypesenseEventDocument {
  */
 export const eventsCollectionSchema: CollectionCreateSchema = {
   name: EVENTS_COLLECTION_NAME,
+  synonym_sets: ["events-synonyms"],
   fields: [
     { name: "id", type: "string" },
     { name: "title", type: "string" },

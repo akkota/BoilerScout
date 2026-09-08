@@ -7,6 +7,7 @@ import {
   EVENTS_COLLECTION_NAME,
   TypesenseEventDocument,
 } from "@/lib/typesense/schema";
+import { ensureEventSynonyms } from "@/lib/typesense/synonyms";
 import {
   normalizePurdueEvent,
   RawPurdueEventWrapper,
@@ -111,9 +112,10 @@ export async function ingestEvents(): Promise<void> {
   console.log(`- Normalized: ${normalizedCount}`);
   console.log(`- Skipped:    ${skippedCount}`);
 
-  // 3. Ensure Typesense collection exists
+  // 3. Ensure Typesense collection exists and campus synonyms are applied
   const adminClient = getTypesenseAdminClient();
   await ensureEventsCollection(adminClient);
+  await ensureEventSynonyms(adminClient);
 
   // 4. Bulk import into Typesense in safe batches
   let importedCount = 0;
