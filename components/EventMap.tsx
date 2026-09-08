@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import mapboxgl from "mapbox-gl";
-import "mapbox-gl/dist/mapbox-gl.css";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+import "@/components/map/leaflet.css";
 import { Event } from "@/types/event";
 import { CAMPUS_CENTER } from "@/lib/filters";
 import { escapeHtml, formatEventTime } from "@/lib/format";
@@ -16,25 +17,15 @@ import {
  * EventMap
  * Owned by: Frontend developer
  *
- * Live Mapbox GL map of the current result set, two-way synced with the list.
+ * Leaflet + Mapbox Static Tiles (plain <img> rasters, DOM markers). Mapbox GL
+ * JS was replaced because WebGL compositing rendered a blank canvas despite
+ * valid tiles/context. We still use NEXT_PUBLIC_MAPBOX_TOKEN — for these
+ * raster tiles and later for the Directions API (RouteScout). CARTO was
+ * tried first but now requires its own API key; Mapbox keys do not unlock it.
  *
- * NOTE ON COORDINATE ORDER: Mapbox takes [lng, lat]. Our Event contract (and
- * Typesense) use { lat, lng } / [lat, lng]. Every conversion below is explicit.
- *
- * NOTE ON READINESS: effects key off the Map *instance*, not the "load" event.
- * Markers and fitBounds only need the transform, which exists immediately after
- * construction.
- *
- * NOTE ON REACT STRICT MODE: see next.config.ts — reactStrictMode is off.
- * Confirmed via instrumentation that Strict Mode's dev-only double-invoke
- * (mount -> cleanup -> mount) constructs two real WebGL contexts back-to-back
- * on the same canvas every page load. All internal state checked out fine in
- * both instances (correct canvas buffer size, live WebGL context, exactly the
- * expected marker count, 'load'/'render' events firing normally) — the map
- * still rendered blank on a random subset of reloads with no error anywhere.
- * That symptom (verified-correct state, inconsistent paint, present only when
- * two contexts are churned back-to-back) is a known GPU/compositor race, not
- * an application bug — see next.config.ts for the fix.
+ * NOTE ON COORDINATE ORDER: Leaflet uses [lat, lng], matching Event.location
+ * and Typesense. This is the opposite of Mapbox GL's [lng, lat]. Conversions
+ * below are explicit so a future Mapbox call site cannot silently swap them.
  */
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -49,13 +40,55 @@ interface EventMapProps {
   userLocation?: { lat: number; lng: number };
 }
 
-/** Read the theme synchronously so the map is built with the right style. */
+type MarkerEntry = { marker: L.Marker; el: HTMLButtonElement };
+
+const MAPBOX_ATTR =
+  '&copy; <a href="https://www.mapbox.com/about/maps/">Mapbox</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+
+function hasPlottableLocation(
+  event: Event
+): event is Event & { location: { name: string; lat: number; lng: number } } {
+  const loc = event.location;
+  return Boolean(
+    loc && Number.isFinite(loc.lat) && Number.isFinite(loc.lng)
+  );
+}
+
+/** Leaflet LatLng is [lat, lng] — same as Event.location, unlike Mapbox. */
+function toLatLng(loc: { lat: number; lng: number }): L.LatLngExpression {
+  return [loc.lat, loc.lng];
+}
+
+/** Mapbox Static Tiles API — raster PNGs keyed by the same pk. token. */
+function createBasemapLayer(isDark: boolean, token: string): L.TileLayer {
+  const style = isDark ? "dark-v11" : "light-v11";
+  return L.tileLayer(
+    `https://api.mapbox.com/styles/v1/mapbox/${style}/tiles/512/{z}/{x}/{y}@2x?access_token=${token}`,
+    {
+      attribution: MAPBOX_ATTR,
+      tileSize: 512,
+      zoomOffset: -1,
+      maxZoom: 22,
+    }
+  );
+}
+
+function markerIcon(el: HTMLElement, size: number): L.DivIcon {
+  return L.divIcon({
+    className: "bs-marker",
+    html: el,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
+}
+
+/** Read the theme synchronously so the first tile layer is the right variant. */
 function prefersDark(): boolean {
   if (typeof window === "undefined") return false;
   return window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
-function useMapStyleUrl(): string {
+function usePrefersDark(): boolean {
   const [isDark, setIsDark] = useState(prefersDark);
 
   useEffect(() => {
@@ -65,23 +98,24 @@ function useMapStyleUrl(): string {
     return () => mq.removeEventListener("change", onChange);
   }, []);
 
-  return isDark
-    ? "mapbox://styles/mapbox/dark-v11"
-    : "mapbox://styles/mapbox/light-v11";
+  return isDark;
 }
 
 function popupHtml(event: Event): string {
-  const topReason = event.reasons?.[0];
+  const topReason = event.reasons?.find((r) => r?.trim());
+  const when = formatEventTime(event.startsAt);
   return `
     <div style="font-family:inherit;max-width:220px">
       <p style="margin:0 0 4px;font-weight:700;font-size:13px;line-height:1.3">
-        ${escapeHtml(event.title)}
-      </p>
-      <p style="margin:0;font-size:11px;color:#78716c">
-        ${escapeHtml(formatEventTime(event.startsAt))}
+        ${escapeHtml(event.title?.trim() || "Untitled event")}
       </p>
       ${
-        event.location?.name
+        when
+          ? `<p style="margin:0;font-size:11px;color:#78716c">${escapeHtml(when)}</p>`
+          : ""
+      }
+      ${
+        event.location?.name?.trim()
           ? `<p style="margin:2px 0 0;font-size:11px;color:#78716c">${escapeHtml(
               event.location.name
             )}</p>`
@@ -107,119 +141,122 @@ export default function EventMap({
   userLocation,
 }: EventMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const markersRef = useRef(new Map<string, mapboxgl.Marker>());
-  const popupRef = useRef<mapboxgl.Popup | null>(null);
-  const userMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const markersRef = useRef(new Map<string, MarkerEntry>());
+  const popupRef = useRef<L.Popup | null>(null);
+  const userMarkerRef = useRef<L.Marker | null>(null);
+  const tilesRef = useRef<L.TileLayer | null>(null);
   const fittedIdsRef = useRef("");
 
-  // The instance itself is the readiness signal — see note above.
-  const [map, setMap] = useState<mapboxgl.Map | null>(null);
+  const [map, setMap] = useState<L.Map | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
 
-  // Keep callbacks in refs so marker listeners never need re-binding.
   const onSelectRef = useRef(onSelectEvent);
   const onHoverRef = useRef(onHoverEvent);
   onSelectRef.current = onSelectEvent;
   onHoverRef.current = onHoverEvent;
 
-  const styleUrl = useMapStyleUrl();
-  const styleUrlRef = useRef(styleUrl);
-  const mapped = events.filter((e) => e.location);
+  const isDark = usePrefersDark();
+  const mapped = events.filter(hasPlottableLocation);
 
   // --- init -----------------------------------------------------------------
   useEffect(() => {
-    if (!MAPBOX_TOKEN || !containerRef.current) return;
+    if (!containerRef.current) return;
 
     const container = containerRef.current;
     const markers = markersRef.current;
-    let instance: mapboxgl.Map;
-    console.log("[EventMap] constructing map instance now"); // TEMP DIAGNOSTIC
+    let instance: L.Map;
 
     try {
-      mapboxgl.accessToken = MAPBOX_TOKEN;
-      instance = new mapboxgl.Map({
-        container,
-        style: styleUrlRef.current,
-        center: [CAMPUS_CENTER.lng, CAMPUS_CENTER.lat],
+      instance = L.map(container, {
+        // Leaflet: [lat, lng] — matches CAMPUS_CENTER / Event.location.
+        center: [CAMPUS_CENTER.lat, CAMPUS_CENTER.lng],
         zoom: 14.5,
+        zoomControl: false,
+        // Popup open/close is driven by selectedEventId, not Leaflet defaults.
+        closePopupOnClick: false,
       });
     } catch (err) {
-      // WebGL unavailable, bad token format, etc. Surface it instead of
-      // rendering an empty black rectangle.
-      console.error("Mapbox failed to initialize:", err);
-      setMapError(err instanceof Error ? err.message : "Map failed to initialize");
+      console.error("Leaflet failed to initialize:", err);
+      setMapError(
+        err instanceof Error ? err.message : "Map failed to initialize"
+      );
       return;
     }
 
-    instance.addControl(
-      new mapboxgl.NavigationControl({ showCompass: false }),
-      "top-right"
-    );
+    L.control.zoom({ position: "topright" }).addTo(instance);
     instance.on("click", () => onSelectRef.current?.(undefined));
-    instance.on("error", (e) => {
-      const message = e.error?.message ?? "Map resource failed to load";
-      console.error("Mapbox error:", message, e.error);
-      setMapError(message);
+
+    const observer = new ResizeObserver(() => {
+      instance.invalidateSize({ animate: false });
     });
+    observer.observe(container);
+    requestAnimationFrame(() => instance.invalidateSize({ animate: false }));
 
     setMap(instance);
-
-    // Keep the canvas correct when the column resizes (sidebar, mobile rotate).
-    const observer = new ResizeObserver(() => instance.resize());
-    observer.observe(container);
 
     return () => {
       observer.disconnect();
       popupRef.current?.remove();
       popupRef.current = null;
-      markers.forEach((m) => m.remove());
+      markers.forEach(({ marker }) => marker.remove());
       markers.clear();
       userMarkerRef.current?.remove();
       userMarkerRef.current = null;
+      tilesRef.current = null;
       fittedIdsRef.current = "";
       instance.remove();
       setMap(null);
     };
   }, []);
 
-  // --- theme ----------------------------------------------------------------
+  // --- theme: swap Mapbox light/dark rasters without rebuilding the map -----
   useEffect(() => {
-    styleUrlRef.current = styleUrl;
-    if (!map) return;
-    map.setStyle(styleUrl);
-  }, [styleUrl, map]);
+    if (!map || !MAPBOX_TOKEN) return;
+    tilesRef.current?.remove();
+    tilesRef.current = createBasemapLayer(isDark, MAPBOX_TOKEN).addTo(map);
+  }, [isDark, map]);
 
   // --- markers --------------------------------------------------------------
   useEffect(() => {
     if (!map) return;
 
-    markersRef.current.forEach((m) => m.remove());
+    markersRef.current.forEach(({ marker }) => marker.remove());
     markersRef.current.clear();
 
     mapped.forEach((event) => {
-      const el = createMarkerElement(event.title);
+      const loc = event.location!;
+      const el = createMarkerElement(event.title?.trim() || "Event");
 
-      el.addEventListener("click", (e) => {
-        e.stopPropagation();
-        onSelectRef.current?.(event.id);
-      });
+      L.DomEvent.disableClickPropagation(el);
+      el.addEventListener("click", () => onSelectRef.current?.(event.id));
       el.addEventListener("mouseenter", () => onHoverRef.current?.(event.id));
       el.addEventListener("mouseleave", () => onHoverRef.current?.(undefined));
 
-      const marker = new mapboxgl.Marker({ element: el })
-        .setLngLat([event.location!.lng, event.location!.lat])
-        .addTo(map);
+      const marker = L.marker(toLatLng(loc), {
+        icon: markerIcon(el, 36),
+        keyboard: false,
+        title: event.title?.trim() || "Event",
+      }).addTo(map);
 
-      markersRef.current.set(event.id, marker);
+      const iconEl = marker.getElement();
+      if (iconEl) L.DomEvent.disableClickPropagation(iconEl);
+
+      markersRef.current.set(event.id, { marker, el });
     });
 
     // Only refit when the result set actually changes, so hovering or
     // selecting never yanks the viewport away from the user.
     const ids = mapped.map((e) => e.id).join("|");
     if (ids && ids !== fittedIdsRef.current) {
-      const bounds = new mapboxgl.LngLatBounds();
-      mapped.forEach((e) => bounds.extend([e.location!.lng, e.location!.lat]));
-      map.fitBounds(bounds, { padding: 64, maxZoom: 16, duration: 600 });
+      const bounds = L.latLngBounds(
+        mapped.map((e) => toLatLng(e.location!))
+      );
+      map.fitBounds(bounds, {
+        padding: [64, 64],
+        maxZoom: 16,
+        animate: true,
+        duration: 0.6,
+      });
     }
     fittedIdsRef.current = ids;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -229,11 +266,11 @@ export default function EventMap({
   useEffect(() => {
     if (!map) return;
 
-    markersRef.current.forEach((marker, id) => {
-      applyMarkerState(marker.getElement(), {
-        selected: id === selectedEventId,
-        hovered: id === hoveredEventId,
-      });
+    markersRef.current.forEach(({ marker, el }, id) => {
+      const selected = id === selectedEventId;
+      const hovered = id === hoveredEventId;
+      applyMarkerState(el, { selected, hovered });
+      marker.setZIndexOffset(selected || hovered ? 1000 : 0);
     });
 
     popupRef.current?.remove();
@@ -241,10 +278,16 @@ export default function EventMap({
 
     const selected = mapped.find((e) => e.id === selectedEventId);
     if (selected?.location) {
-      popupRef.current = new mapboxgl.Popup({ offset: 18, closeButton: true })
-        .setLngLat([selected.location.lng, selected.location.lat])
-        .setHTML(popupHtml(selected))
-        .addTo(map);
+      popupRef.current = L.popup({
+        offset: [0, -18],
+        closeButton: true,
+        autoPan: false,
+        closeOnClick: false,
+        className: "bs-popup",
+      })
+        .setLatLng(toLatLng(selected.location))
+        .setContent(popupHtml(selected))
+        .openOn(map);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEventId, hoveredEventId, events, map]);
@@ -256,16 +299,20 @@ export default function EventMap({
     userMarkerRef.current?.remove();
     userMarkerRef.current = null;
 
-    if (userLocation) {
-      userMarkerRef.current = new mapboxgl.Marker({
-        element: createUserLocationElement(),
-      })
-        .setLngLat([userLocation.lng, userLocation.lat])
-        .addTo(map);
+    if (
+      userLocation &&
+      Number.isFinite(userLocation.lat) &&
+      Number.isFinite(userLocation.lng)
+    ) {
+      userMarkerRef.current = L.marker(toLatLng(userLocation), {
+        icon: markerIcon(createUserLocationElement(), 28),
+        interactive: false,
+        keyboard: false,
+        zIndexOffset: 500,
+      }).addTo(map);
     }
   }, [userLocation, map]);
 
-  // --- no token: keep a useful placeholder ----------------------------------
   if (!MAPBOX_TOKEN) {
     return (
       <div className="w-full h-80 rounded-xl border border-dashed border-stone-300 dark:border-stone-700 bg-stone-100 dark:bg-stone-900/50 flex flex-col items-center justify-center text-center p-6 gap-2">
@@ -283,7 +330,7 @@ export default function EventMap({
   }
 
   return (
-    <div className="relative w-full h-80 rounded-xl overflow-hidden border border-stone-200 dark:border-stone-800 bg-stone-100 dark:bg-stone-900">
+    <div className="bs-map relative w-full h-80 rounded-xl overflow-hidden border border-stone-200 dark:border-stone-800 bg-stone-100 dark:bg-stone-900">
       <div ref={containerRef} className="absolute inset-0" />
 
       <div className="absolute top-2 left-2 z-10 px-2 py-1 rounded-md bg-white/90 dark:bg-stone-900/90 text-[11px] font-medium text-stone-600 dark:text-stone-300 shadow-sm pointer-events-none">

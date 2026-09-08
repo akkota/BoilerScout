@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CAMPUS_CENTER,
   DEFAULT_FILTER_STATE,
@@ -43,8 +43,24 @@ export default function FilterBar({
 }: FilterBarProps) {
   const [geoStatus, setGeoStatus] = useState<GeoStatus>("idle");
   const [showAllCategories, setShowAllCategories] = useState(false);
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const geoRequestRef = useRef(0);
+  const prevFiltersRef = useRef(value);
 
   const activeCount = countActiveFilters(value);
+
+  useEffect(() => {
+    const prev = prevFiltersRef.current;
+    prevFiltersRef.current = value;
+    if (geoStatus !== "locating") return;
+    const prevHadFilters = countActiveFilters(prev) > 0 || prev.nearMe;
+    const nowClear = countActiveFilters(value) === 0 && !value.nearMe;
+    if (prevHadFilters && nowClear) {
+      geoRequestRef.current += 1;
+      setGeoStatus("idle");
+    }
+  }, [value, geoStatus]);
 
   const setTime = (time: TimePreset) => onChange({ ...value, time });
 
@@ -58,6 +74,7 @@ export default function FilterBar({
   const toggleNearMe = () => {
     // Turning it off is simple; turning it on needs a location first.
     if (value.nearMe) {
+      geoRequestRef.current += 1;
       setGeoStatus("idle");
       onChange({ ...value, nearMe: false, center: undefined });
       return;
@@ -65,25 +82,28 @@ export default function FilterBar({
 
     if (typeof navigator === "undefined" || !navigator.geolocation) {
       setGeoStatus("fallback");
-      onChange({ ...value, nearMe: true, center: CAMPUS_CENTER });
+      onChange({ ...valueRef.current, nearMe: true, center: CAMPUS_CENTER });
       return;
     }
 
+    const requestId = ++geoRequestRef.current;
     setGeoStatus("locating");
     navigator.geolocation.getCurrentPosition(
       (pos) => {
+        if (requestId !== geoRequestRef.current) return;
         setGeoStatus("precise");
         onChange({
-          ...value,
+          ...valueRef.current,
           nearMe: true,
           center: { lat: pos.coords.latitude, lng: pos.coords.longitude },
         });
       },
       () => {
+        if (requestId !== geoRequestRef.current) return;
         // Denied, timed out, or blocked (common on conference wifi) —
         // fall back to campus center so the demo never stalls.
         setGeoStatus("fallback");
-        onChange({ ...value, nearMe: true, center: CAMPUS_CENTER });
+        onChange({ ...valueRef.current, nearMe: true, center: CAMPUS_CENTER });
       },
       { enableHighAccuracy: false, timeout: 5000, maximumAge: 300000 }
     );
@@ -110,6 +130,7 @@ export default function FilterBar({
             type="button"
             disabled={disabled}
             onClick={() => {
+              geoRequestRef.current += 1;
               setGeoStatus("idle");
               onChange({ ...DEFAULT_FILTER_STATE });
             }}
@@ -221,6 +242,7 @@ export default function FilterBar({
         {availableCategories.length > 8 && (
           <button
             type="button"
+            disabled={disabled}
             onClick={() => setShowAllCategories((s) => !s)}
             className="text-xs text-stone-500 dark:text-stone-400 hover:text-amber-600 dark:hover:text-amber-400 underline underline-offset-2 cursor-pointer"
           >

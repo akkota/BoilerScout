@@ -23,11 +23,17 @@ export default function SearchBar({
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    onSearch(query);
+    const next = query.trim();
+    setQuery(next);
+    onSearch(next);
   };
 
   return (
-    <form onSubmit={handleSubmit} className="w-full flex items-center gap-2" role="search">
+    <form
+      onSubmit={handleSubmit}
+      className="w-full flex flex-col sm:flex-row items-stretch sm:items-center gap-2"
+      role="search"
+    >
       <div className="relative flex-1">
         <label htmlFor="search-input" className="sr-only">
           Search Purdue events
@@ -39,7 +45,9 @@ export default function SearchBar({
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search Purdue events (e.g. AI hackathon, pitch night, live music)..."
           autoComplete="off"
-          className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-500 transition-colors"
+          className={`w-full py-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-500 transition-colors ${
+            query ? "pl-4 pr-16" : "px-4"
+          }`}
         />
         {query && (
           <button
@@ -58,8 +66,7 @@ export default function SearchBar({
       <button
         id="search-button"
         type="submit"
-        disabled={isLoading}
-        className="px-6 py-3 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-400 text-black font-semibold rounded-lg shadow transition-colors flex items-center gap-2 cursor-pointer"
+        className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-black font-semibold rounded-lg shadow transition-colors flex items-center justify-center gap-2 cursor-pointer"
       >
         {isLoading ? (
           <>

@@ -35,9 +35,50 @@ export async function searchEvents(request: SearchRequest): Promise<SearchRespon
   });
 
   if (!res.ok) {
-    const errorText = await res.text().catch(() => "Unknown error");
-    throw new Error(`Failed to search events: ${res.status} ${errorText}`);
+    throw new Error(await readSearchError(res));
   }
 
-  return res.json();
+  let data: unknown;
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error("Couldn't load events. Try again.");
+  }
+
+  return parseSearchResponse(data);
+}
+
+async function readSearchError(res: Response): Promise<string> {
+  try {
+    const body: unknown = await res.json();
+    if (
+      body &&
+      typeof body === "object" &&
+      "error" in body &&
+      typeof body.error === "string" &&
+      body.error.trim()
+    ) {
+      return body.error;
+    }
+  } catch {
+    // Non-JSON error pages (HTML) are not useful in the UI.
+  }
+  return "Couldn't load events. Try again.";
+}
+
+function parseSearchResponse(data: unknown): SearchResponse {
+  if (!data || typeof data !== "object" || !("events" in data)) {
+    throw new Error("Couldn't load events. Try again.");
+  }
+  const events = (data as SearchResponse).events;
+  if (!Array.isArray(events)) {
+    throw new Error("Couldn't load events. Try again.");
+  }
+  const found = (data as SearchResponse).found;
+  const tookMs = (data as SearchResponse).tookMs;
+  return {
+    events,
+    found: typeof found === "number" ? found : events.length,
+    tookMs: typeof tookMs === "number" ? tookMs : 0,
+  };
 }

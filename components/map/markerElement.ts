@@ -1,5 +1,5 @@
 /**
- * Imperative marker DOM for Mapbox GL.
+ * Imperative marker DOM for Leaflet DivIcons.
  * Owned by: Frontend developer
  *
  * Markers live outside React's tree, so their styling is applied directly

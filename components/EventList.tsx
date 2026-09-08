@@ -5,6 +5,7 @@ interface EventListProps {
   events: Event[];
   isLoading?: boolean;
   query?: string;
+  hasError?: boolean;
   hasActiveFilters?: boolean;
   onClearFilters?: () => void;
   selectedEventId?: string;
@@ -17,6 +18,7 @@ export default function EventList({
   events,
   isLoading = false,
   query = "",
+  hasError = false,
   hasActiveFilters = false,
   onClearFilters,
   selectedEventId,
@@ -24,7 +26,9 @@ export default function EventList({
   onSelectEvent,
   onHoverEvent,
 }: EventListProps) {
-  if (isLoading) {
+  // Keep the previous result set on screen while a new search is in flight so
+  // the list and map don't flash empty. First load still needs a placeholder.
+  if (isLoading && events.length === 0) {
     return (
       <div className="py-12 text-center text-gray-500 dark:text-gray-400">
         <p className="text-base">Searching Purdue events...</p>
@@ -32,7 +36,9 @@ export default function EventList({
     );
   }
 
+  // Parent already shows the error banner + Retry; don't also say "no events".
   if (events.length === 0) {
+    if (hasError) return null;
     return (
       <div className="py-12 text-center text-gray-500 dark:text-gray-400 border border-dashed border-gray-300 dark:border-gray-800 rounded-xl p-8">
         <p className="text-base font-medium">No events found</p>
@@ -62,7 +68,10 @@ export default function EventList({
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div
+      className="grid grid-cols-1 md:grid-cols-2 gap-4"
+      aria-busy={isLoading}
+    >
       {events.map((event) => (
         <EventCard
           key={event.id}

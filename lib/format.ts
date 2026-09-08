@@ -4,7 +4,9 @@
  */
 
 export function formatEventTime(startsAt: number): string {
-  return new Date(startsAt).toLocaleString("en-US", {
+  const date = new Date(startsAt);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("en-US", {
     weekday: "short",
     month: "short",
     day: "numeric",
@@ -14,8 +16,8 @@ export function formatEventTime(startsAt: number): string {
 }
 
 /** Map popups take an HTML string, so anything interpolated must be escaped. */
-export function escapeHtml(value: string): string {
-  return value
+export function escapeHtml(value: string | undefined | null): string {
+  return String(value ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")

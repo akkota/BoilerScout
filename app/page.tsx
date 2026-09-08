@@ -17,8 +17,8 @@ import {
 } from "@/lib/filters";
 import { Event } from "@/types/event";
 
-// Mapbox GL is ~450 kB — keep it off the critical path so search is
-// interactive immediately.
+// Leaflet + CSS tiles — keep the map off the critical path so search is
+// interactive immediately. SSR is off because Leaflet touches `window`.
 const EventMap = dynamic(() => import("@/components/EventMap"), {
   ssr: false,
   loading: () => (
@@ -92,6 +92,12 @@ export default function Home() {
 
       setEvents(response.events);
       setTookMs(response.tookMs);
+      setSelectedEventId((id) =>
+        id && response.events.some((e) => e.id === id) ? id : undefined
+      );
+      setHoveredEventId((id) =>
+        id && response.events.some((e) => e.id === id) ? id : undefined
+      );
       setSeenCategories((prev) => {
         const merged = new Set(prev);
         response.events.forEach((e) => e.categories?.forEach((c) => merged.add(c)));
@@ -103,6 +109,8 @@ export default function Home() {
       setError(err instanceof Error ? err.message : "Failed to load events");
       setEvents([]);
       setTookMs(null);
+      setSelectedEventId(undefined);
+      setHoveredEventId(undefined);
     } finally {
       if (requestId === requestIdRef.current) {
         setIsLoading(false);
@@ -127,6 +135,19 @@ export default function Home() {
 
   const activeFilterCount = countActiveFilters(filters);
 
+  const handleQueryChange = useCallback(
+    (q: string) => {
+      // Same-string setState is a no-op, so re-submitting or re-clicking a
+      // chip would otherwise not fire a search (bad after an error).
+      if (q === query) {
+        runSearch(q, filters);
+        return;
+      }
+      setQuery(q);
+    },
+    [query, filters, runSearch]
+  );
+
   return (
     <main className="max-w-5xl mx-auto px-4 py-8 sm:px-6 lg:px-8 space-y-6">
       {/* Header */}
@@ -144,13 +165,12 @@ export default function Home() {
       <section className="space-y-3">
         <SearchBar
           initialQuery={query}
-          onSearch={setQuery}
+          onSearch={handleQueryChange}
           isLoading={isLoading}
         />
         <ExampleQueries
-          onSelect={setQuery}
+          onSelect={handleQueryChange}
           activeQuery={query}
-          disabled={isLoading}
         />
       </section>
 
@@ -220,6 +240,7 @@ export default function Home() {
           events={events}
           isLoading={isLoading}
           query={query}
+          hasError={Boolean(error)}
           hasActiveFilters={activeFilterCount > 0}
           onClearFilters={() => setFilters({ ...DEFAULT_FILTER_STATE })}
           selectedEventId={selectedEventId}
