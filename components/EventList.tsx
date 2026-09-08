@@ -5,12 +5,16 @@ interface EventListProps {
   events: Event[];
   isLoading?: boolean;
   query?: string;
+  hasActiveFilters?: boolean;
+  onClearFilters?: () => void;
 }
 
 export default function EventList({
   events,
   isLoading = false,
   query = "",
+  hasActiveFilters = false,
+  onClearFilters,
 }: EventListProps) {
   if (isLoading) {
     return (
@@ -26,10 +30,24 @@ export default function EventList({
         <p className="text-base font-medium">No events found</p>
         {query ? (
           <p className="text-sm mt-1">
-            No events matched &ldquo;{query}&rdquo;. Try another search term or clear the filter.
+            No events matched &ldquo;{query}&rdquo;.
+            {hasActiveFilters
+              ? " Try widening your filters or a different search."
+              : " Try a different search term."}
           </p>
+        ) : hasActiveFilters ? (
+          <p className="text-sm mt-1">No events match your current filters.</p>
         ) : (
           <p className="text-sm mt-1">No events currently available.</p>
+        )}
+        {hasActiveFilters && onClearFilters && (
+          <button
+            type="button"
+            onClick={onClearFilters}
+            className="mt-4 px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-black text-sm font-semibold cursor-pointer"
+          >
+            Clear all filters
+          </button>
         )}
       </div>
     );
