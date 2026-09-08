@@ -1,4 +1,5 @@
 import { TypesenseEventDocument } from "@/lib/typesense/schema";
+import { resolvePurdueBuilding } from "@/lib/data/purdueBuildings";
 
 /**
  * Raw Purdue Localist API event structure types (subset of interest)
@@ -142,20 +143,24 @@ export function normalizePurdueEvent(
   }
 
   // Geopoint: Typesense requires [latitude, longitude]
-  // Do NOT invent missing coordinates
+  // Prefer explicit Localist coordinates; otherwise resolve known Purdue buildings.
+  // Do NOT invent / guess coordinates when no confident match exists.
   let location: [number, number] | undefined;
-  if (item.geo?.latitude && item.geo?.longitude) {
-    const lat =
-      typeof item.geo.latitude === "number"
-        ? item.geo.latitude
-        : parseFloat(String(item.geo.latitude));
-    const lng =
-      typeof item.geo.longitude === "number"
-        ? item.geo.longitude
-        : parseFloat(String(item.geo.longitude));
+  const rawLat = item.geo?.latitude;
+  const rawLng = item.geo?.longitude;
+  if (rawLat != null && rawLng != null && rawLat !== "" && rawLng !== "") {
+    const lat = typeof rawLat === "number" ? rawLat : parseFloat(String(rawLat));
+    const lng = typeof rawLng === "number" ? rawLng : parseFloat(String(rawLng));
 
     if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
       location = [lat, lng];
+    }
+  }
+
+  if (!location && location_name) {
+    const resolved = resolvePurdueBuilding(location_name);
+    if (resolved) {
+      location = [resolved.lat, resolved.lng];
     }
   }
 
