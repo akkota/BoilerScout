@@ -7,6 +7,10 @@ interface EventListProps {
   query?: string;
   hasActiveFilters?: boolean;
   onClearFilters?: () => void;
+  selectedEventId?: string;
+  hoveredEventId?: string;
+  onSelectEvent?: (eventId: string) => void;
+  onHoverEvent?: (eventId: string | undefined) => void;
 }
 
 export default function EventList({
@@ -15,6 +19,10 @@ export default function EventList({
   query = "",
   hasActiveFilters = false,
   onClearFilters,
+  selectedEventId,
+  hoveredEventId,
+  onSelectEvent,
+  onHoverEvent,
 }: EventListProps) {
   if (isLoading) {
     return (
@@ -56,7 +64,14 @@ export default function EventList({
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       {events.map((event) => (
-        <EventCard key={event.id} event={event} />
+        <EventCard
+          key={event.id}
+          event={event}
+          isSelected={event.id === selectedEventId}
+          isHovered={event.id === hoveredEventId}
+          onSelect={onSelectEvent}
+          onHover={onHoverEvent}
+        />
       ))}
     </div>
   );

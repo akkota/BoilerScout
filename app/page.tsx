@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import dynamic from "next/dynamic";
 import SearchBar from "@/components/SearchBar";
 import ExampleQueries from "@/components/ExampleQueries";
 import FilterBar from "@/components/FilterBar";
 import EventList from "@/components/EventList";
-import EventMap from "@/components/EventMap";
 import { searchEvents } from "@/lib/api/search";
 import {
+  CAMPUS_CENTER,
   DEFAULT_CATEGORIES,
   DEFAULT_FILTER_STATE,
   FilterState,
@@ -15,6 +16,15 @@ import {
   countActiveFilters,
 } from "@/lib/filters";
 import { Event } from "@/types/event";
+
+// Mapbox GL is ~450 kB — keep it off the critical path so search is
+// interactive immediately.
+const EventMap = dynamic(() => import("@/components/EventMap"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-80 rounded-xl border border-stone-200 dark:border-stone-800 bg-stone-100 dark:bg-stone-900/50 animate-pulse" />
+  ),
+});
 
 /** Read `?q=` once on first client render so shared/reloaded links restore state. */
 function initialQueryFromUrl(): string {
@@ -45,6 +55,17 @@ export default function Home() {
   const [tookMs, setTookMs] = useState<number | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<string | undefined>();
+  const [hoveredEventId, setHoveredEventId] = useState<string | undefined>();
+
+  // Selecting from the map should bring the matching card into view;
+  // selecting from the list obviously should not scroll.
+  const handleSelectFromMap = useCallback((eventId: string | undefined) => {
+    setSelectedEventId(eventId);
+    if (!eventId) return;
+    document
+      .getElementById(`event-${eventId}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, []);
 
   // Categories accumulate as results come in, so the picker never loses an
   // option just because the current result set no longer contains it.
@@ -147,7 +168,10 @@ export default function Home() {
         <EventMap
           events={events}
           selectedEventId={selectedEventId}
-          onSelectEvent={setSelectedEventId}
+          hoveredEventId={hoveredEventId}
+          onSelectEvent={handleSelectFromMap}
+          onHoverEvent={setHoveredEventId}
+          userLocation={filters.nearMe ? (filters.center ?? CAMPUS_CENTER) : undefined}
         />
       </section>
 
@@ -198,6 +222,10 @@ export default function Home() {
           query={query}
           hasActiveFilters={activeFilterCount > 0}
           onClearFilters={() => setFilters({ ...DEFAULT_FILTER_STATE })}
+          selectedEventId={selectedEventId}
+          hoveredEventId={hoveredEventId}
+          onSelectEvent={setSelectedEventId}
+          onHoverEvent={setHoveredEventId}
         />
       </section>
     </main>
