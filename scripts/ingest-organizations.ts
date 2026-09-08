@@ -189,7 +189,8 @@ export async function ingestOrganizations(): Promise<void> {
   console.log("==================================================");
 }
 
-if (require.main === module || process.argv[1]?.endsWith("ingest-organizations.ts")) {
+const entryScript = (process.argv[1] ?? "").replace(/\\/g, "/");
+if (/(^|\/)ingest-organizations(\.[cm]?[jt]s)?$/.test(entryScript)) {
   ingestOrganizations().catch((error) => {
     console.error("Fatal organizations ingestion error:", error);
     process.exit(1);

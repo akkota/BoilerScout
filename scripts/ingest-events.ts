@@ -204,8 +204,9 @@ export async function ingestEvents(): Promise<void> {
   console.log("==================================================");
 }
 
-// Run if directly executed
-if (require.main === module || process.argv[1]?.endsWith("ingest-events.ts")) {
+// Run when invoked directly via `tsx` / `node` (ESM-safe; avoid require.main)
+const entryScript = (process.argv[1] ?? "").replace(/\\/g, "/");
+if (/(^|\/)ingest-events(\.[cm]?[jt]s)?$/.test(entryScript)) {
   ingestEvents().catch((error) => {
     console.error("Fatal ingestion error:", error);
     process.exit(1);

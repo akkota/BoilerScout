@@ -214,7 +214,8 @@ export async function ingestVenues(): Promise<void> {
   console.log("==================================================");
 }
 
-if (require.main === module || process.argv[1]?.endsWith("ingest-venues.ts")) {
+const entryScript = (process.argv[1] ?? "").replace(/\\/g, "/");
+if (/(^|\/)ingest-venues(\.[cm]?[jt]s)?$/.test(entryScript)) {
   ingestVenues().catch((error) => {
     console.error("Fatal venues ingestion error:", error);
     process.exit(1);

@@ -53,6 +53,22 @@ function extractExteriorRing(
 }
 
 /**
+ * Resolve corridor width from either corridorMeters (preferred) or bufferMeters
+ * (documented API alias). Returns null when neither is a positive finite number.
+ */
+export function resolveCorridorMeters(
+  route: Pick<RouteOptions, "corridorMeters" | "bufferMeters">
+): number | null {
+  const candidates = [route.corridorMeters, route.bufferMeters];
+  for (const value of candidates) {
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      return Math.min(value, MAX_CORRIDOR_METERS);
+    }
+  }
+  return null;
+}
+
+/**
  * Convert a walking route into a buffered corridor polygon for Typesense
  * geo-polygon filtering.
  *
@@ -72,15 +88,10 @@ export function buildRouteCorridor(
     return null;
   }
 
-  if (
-    typeof route.corridorMeters !== "number" ||
-    !Number.isFinite(route.corridorMeters) ||
-    route.corridorMeters <= 0
-  ) {
+  const corridorMeters = resolveCorridorMeters(route);
+  if (corridorMeters === null) {
     return null;
   }
-
-  const corridorMeters = Math.min(route.corridorMeters, MAX_CORRIDOR_METERS);
 
   const validPoints = route.points.filter(isValidCoord);
   if (validPoints.length < 2) return null;
