@@ -11,6 +11,10 @@ import {
   SearchHighlight,
   TypesenseHitMeta,
 } from "@/lib/search/explainResult";
+import {
+  buildRouteCorridor,
+  isPointInRouteCorridor,
+} from "@/lib/search/buildRouteCorridor";
 import type { SearchParams } from "typesense/lib/Typesense/Documents";
 
 export { type TypesenseHitMeta, type SearchHighlight };
@@ -110,6 +114,7 @@ export function mapTypesenseDocToEvent(
  * Executes a search query using Typesense hybrid search with:
  * - Time filtering (startAfter, startBefore)
  * - Geo filtering (center lat/lng, radiusMiles)
+ * - RouteScout corridor geo-polygon filtering (route.points + corridorMeters)
  * - Category filtering
  * - Free events filtering
  * - Factual "Why this result?" explanations
@@ -119,6 +124,8 @@ export function mapTypesenseDocToEvent(
 export async function searchEvents(request: SearchRequest): Promise<SearchResponse> {
   const startTime = Date.now();
   const rawQuery = request.query?.trim() || "";
+  // Invalid route input yields null and is ignored (other filters still apply)
+  const routeCorridor = buildRouteCorridor(request.route);
 
   try {
     const searchClient = getTypesenseSearchClient();
@@ -136,15 +143,17 @@ export async function searchEvents(request: SearchRequest): Promise<SearchRespon
       filterConditions.push(`starts_at:<=${request.filters.startBefore}`);
     }
 
-    // Geo filtering: location:(lat, lng, radius mi)
-    // Only applied if all three parameters (lat, lng, radiusMiles > 0) are provided
+    // Geo filtering: prefer RouteScout polygon when a valid corridor is present.
+    // Otherwise radius filter: location:(lat, lng, radius mi)
     const hasGeoFilter =
       request.filters?.center?.lat !== undefined &&
       request.filters?.center?.lng !== undefined &&
       request.filters?.radiusMiles !== undefined &&
       request.filters.radiusMiles > 0;
 
-    if (
+    if (routeCorridor) {
+      filterConditions.push(routeCorridor.filterBy);
+    } else if (
       hasGeoFilter &&
       request.filters?.center &&
       request.filters?.radiusMiles
@@ -268,10 +277,24 @@ export async function searchEvents(request: SearchRequest): Promise<SearchRespon
       fallback = fallback.filter((evt) => evt.free === true);
     }
 
-    // Geo filter
+    // Geo filter: RouteScout corridor takes precedence over radius
     const center = request.filters?.center;
     const radiusMiles = request.filters?.radiusMiles;
-    if (
+    if (routeCorridor) {
+      fallback = fallback.filter((evt) => {
+        if (
+          typeof evt.location?.lat !== "number" ||
+          typeof evt.location?.lng !== "number"
+        ) {
+          return false;
+        }
+        return isPointInRouteCorridor(
+          evt.location.lat,
+          evt.location.lng,
+          routeCorridor
+        );
+      });
+    } else if (
       center &&
       typeof center.lat === "number" &&
       typeof center.lng === "number" &&
