@@ -9,7 +9,15 @@ import { SearchRequest } from "@/types/search";
  */
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as SearchRequest;
+    let body: SearchRequest;
+    try {
+      body = (await request.json()) as SearchRequest;
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid JSON request body" },
+        { status: 400 }
+      );
+    }
 
     if (body.query === undefined) {
       return NextResponse.json(

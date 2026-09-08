@@ -71,6 +71,11 @@ export function normalizePurdueEvent(
     description = item.description.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
   }
 
+  // Cap description length for memory-efficient neural vectorization on sandbox tiers
+  if (description.length > 350) {
+    description = description.slice(0, 350).trim();
+  }
+
   // Determine Organization
   let organization: string | undefined;
   if (item.departments && item.departments.length > 0 && item.departments[0].name) {

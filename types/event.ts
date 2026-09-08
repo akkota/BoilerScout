@@ -7,16 +7,19 @@ export interface Event {
   startsAt: number;
   endsAt?: number;
 
+  locationName?: string;
   location?: {
     name: string;
-    lat: number;
-    lng: number;
+    lat?: number;
+    lng?: number;
   };
 
   imageUrl?: string;
   url?: string;
   source: string;
+  free?: boolean;
   distanceMiles?: number;
   detourMinutes?: number;
   reasons: string[];
 }
+
