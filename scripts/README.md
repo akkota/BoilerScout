@@ -1,20 +1,40 @@
-# BoilerScout Scripts
+# BoilerScout Ingestion & Data Pipeline Scripts
 
 This directory is owned by the **Backend / Typesense developer**.
 
-## Purpose
+## Ingestion Pipelines
 
-Contains utility, ingestion, schema migration, and indexing scripts for BoilerScout:
+- **`ingest-venues.ts` (`npm run ingest:venues`)**:
+  - Fetches all campus venues and places from the Purdue Localist API (`https://events.purdue.edu/api/2/places`).
+  - Cleans location titles, addresses, and corrects naming typos.
+  - Enriches venues with official campus building codes (e.g., `WALC`, `PMU`, `LWSN`, `ARMS`, `RAWL`, `STEW`) and search aliases.
+  - Supplements with canonical campus landmarks.
+  - Ensures the `venues` collection schema with vector embeddings and upserts documents into Typesense.
 
-- `ingest-purdue.ts`: Fetch live events from Purdue Events / Localist API (`https://events.purdue.edu/api/2/events`) and normalize them to the shared `Event` shape.
-- `init-typesense.ts`: Create or update the Typesense collections schema (e.g., hybrid vector + keyword fields, location geo-point, timestamps).
-- `seed-typesense.ts`: Index normalized Purdue events into Typesense Cloud.
+- **`ingest-organizations.ts` (`npm run ingest:orgs`)**:
+  - Ingests academic departments (`/api/2/departments`), student life / alumni groups (`/api/2/groups`), and active event organizer units.
+  - Normalizes organization names, strips HTML, resolves short names / aliases (e.g. `CCO`, `AAARCC`, `BCC`, `PSUB`, `DSOB`), and assigns clean categories.
+  - Deduplicates across departments and event units.
+  - Ensures the `organizations` collection schema with vector embeddings and upserts documents into Typesense.
 
-## Running Scripts
+- **`ingest-events.ts` (`npm run ingest:events` or `npm run ingest`)**:
+  - Ingests Purdue campus events (`/api/2/events`).
+  - Cleans HTML entities, tags, and formatting artifacts.
+  - Deduplicates recurring and cross-posted identical events, merging rich metadata and categories.
+  - Resolves missing geopoints using the authoritative campus venue directory.
+  - Ensures the `events` collection schema with vector embeddings and upserts documents into Typesense.
 
-Scripts can be executed via `tsx` or `ts-node`:
+- **`ingest-all.ts` (`npm run ingest:all`)**:
+  - Runs venues, organizations, and events ingestion sequentially.
+
+## Running Ingestion
 
 ```bash
-# Example:
-npx tsx scripts/init-typesense.ts
+# Run all ingestion pipelines in sequence
+npm run ingest:all
+
+# Or run individually
+npm run ingest:venues
+npm run ingest:orgs
+npm run ingest:events
 ```

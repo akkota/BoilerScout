@@ -17,7 +17,16 @@ export interface RouteOptions {
     lat: number;
     lng: number;
   }[];
-  corridorMeters: number;
+  /**
+   * Corridor width in meters around the walking route.
+   * Preferred field name used by RouteScout.
+   */
+  corridorMeters?: number;
+  /**
+   * Alias for corridorMeters (documented API contract name).
+   * Accepted for backwards compatibility with clients sending bufferMeters.
+   */
+  bufferMeters?: number;
 }
 
 export interface SearchRequest {
