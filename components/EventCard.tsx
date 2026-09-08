@@ -1,20 +1,38 @@
 import { Event } from "@/types/event";
+import { formatEventTime } from "@/lib/format";
 
 interface EventCardProps {
   event: Event;
+  isSelected?: boolean;
+  isHovered?: boolean;
+  onSelect?: (eventId: string) => void;
+  onHover?: (eventId: string | undefined) => void;
 }
 
-export default function EventCard({ event }: EventCardProps) {
-  const formattedDate = new Date(event.startsAt).toLocaleString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+export default function EventCard({
+  event,
+  isSelected = false,
+  isHovered = false,
+  onSelect,
+  onHover,
+}: EventCardProps) {
+  const formattedDate = formatEventTime(event.startsAt);
+
+  const highlight = isSelected
+    ? "border-amber-500 ring-2 ring-amber-400/60 shadow-md"
+    : isHovered
+      ? "border-amber-400 shadow-md"
+      : "border-gray-200 dark:border-gray-800 shadow-sm";
 
   return (
-    <article className="border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col gap-3">
+    <article
+      // Anchor for scroll-into-view when a marker is clicked on the map.
+      id={`event-${event.id}`}
+      onMouseEnter={() => onHover?.(event.id)}
+      onMouseLeave={() => onHover?.(undefined)}
+      onClick={() => onSelect?.(event.id)}
+      className={`border bg-white dark:bg-gray-900 rounded-xl p-5 transition-shadow hover:shadow-md flex flex-col gap-3 scroll-mt-24 ${highlight}`}
+    >
       <div className="flex items-start justify-between gap-2">
         <div>
           {event.organization && (
@@ -26,7 +44,7 @@ export default function EventCard({ event }: EventCardProps) {
             {event.title}
           </h3>
         </div>
-        <span className="text-xs px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded">
+        <span className="text-xs px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded shrink-0">
           {event.source}
         </span>
       </div>
@@ -52,6 +70,12 @@ export default function EventCard({ event }: EventCardProps) {
             <span>{event.distanceMiles} miles away</span>
           </div>
         )}
+        {event.detourMinutes !== undefined && (
+          <div className="flex items-center gap-1.5">
+            <span className="font-medium text-gray-700 dark:text-gray-300">Detour:</span>
+            <span>+{event.detourMinutes} min off your route</span>
+          </div>
+        )}
       </div>
 
       {event.categories && event.categories.length > 0 && (
@@ -67,7 +91,7 @@ export default function EventCard({ event }: EventCardProps) {
         </div>
       )}
 
-      {/* "Why this result?" Factual Reasons */}
+      {/* "Why this result?" — reasons come from the backend, rendered verbatim */}
       {event.reasons && event.reasons.length > 0 && (
         <div className="mt-1 pt-2 border-t border-gray-100 dark:border-gray-800">
           <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">
@@ -92,6 +116,7 @@ export default function EventCard({ event }: EventCardProps) {
             href={event.url}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
             className="text-xs text-amber-600 dark:text-amber-400 hover:underline inline-flex items-center gap-1 font-medium"
           >
             View event details &rarr;
