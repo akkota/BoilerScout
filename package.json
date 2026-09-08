@@ -7,7 +7,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "ingest": "tsx scripts/ingest-events.ts"
+    "ingest": "tsx scripts/ingest-events.ts",
+    "ingest:venues": "tsx scripts/ingest-venues.ts",
+    "ingest:orgs": "tsx scripts/ingest-organizations.ts",
+    "ingest:events": "tsx scripts/ingest-events.ts",
+    "ingest:all": "tsx scripts/ingest-all.ts",
+    "test:pipeline": "tsx scripts/test-pipeline.ts"
   },
   "dependencies": {
     "next": "^15.2.0",
