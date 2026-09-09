@@ -2,6 +2,8 @@
   "name": "boilerscout",
   "version": "0.1.0",
   "private": true,
+  "description": "Purdue campus event discovery with Typesense hybrid search and RouteScout",
+  "license": "MIT",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

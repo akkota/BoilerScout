@@ -1,40 +1,40 @@
-# BoilerScout Ingestion & Data Pipeline Scripts
+# Ingestion & data pipeline
 
-This directory is owned by the **Backend / Typesense developer**.
+Scripts that pull Purdue Localist data, normalize it, and upsert into Typesense.
 
-## Ingestion Pipelines
+## Pipelines
 
-- **`ingest-venues.ts` (`npm run ingest:venues`)**:
-  - Fetches all campus venues and places from the Purdue Localist API (`https://events.purdue.edu/api/2/places`).
-  - Cleans location titles, addresses, and corrects naming typos.
-  - Enriches venues with official campus building codes (e.g., `WALC`, `PMU`, `LWSN`, `ARMS`, `RAWL`, `STEW`) and search aliases.
-  - Supplements with canonical campus landmarks.
-  - Ensures the `venues` collection schema with vector embeddings and upserts documents into Typesense.
+| Script | npm command | Source |
+| --- | --- | --- |
+| `ingest-venues.ts` | `npm run ingest:venues` | `/api/2/places` + campus building dictionary |
+| `ingest-organizations.ts` | `npm run ingest:orgs` | departments, groups, event organizers |
+| `ingest-events.ts` | `npm run ingest:events` / `npm run ingest` | `/api/2/events` |
+| `ingest-all.ts` | `npm run ingest:all` | runs venues → orgs → events |
+| `setup-synonyms.ts` | `npm run synonyms` | Typesense synonym set |
 
-- **`ingest-organizations.ts` (`npm run ingest:orgs`)**:
-  - Ingests academic departments (`/api/2/departments`), student life / alumni groups (`/api/2/groups`), and active event organizer units.
-  - Normalizes organization names, strips HTML, resolves short names / aliases (e.g. `CCO`, `AAARCC`, `BCC`, `PSUB`, `DSOB`), and assigns clean categories.
-  - Deduplicates across departments and event units.
-  - Ensures the `organizations` collection schema with vector embeddings and upserts documents into Typesense.
-
-- **`ingest-events.ts` (`npm run ingest:events` or `npm run ingest`)**:
-  - Ingests Purdue campus events (`/api/2/events`).
-  - Cleans HTML entities, tags, and formatting artifacts.
-  - Deduplicates recurring and cross-posted identical events, merging rich metadata and categories.
-  - Resolves missing geopoints using the authoritative campus venue directory.
-  - Ensures the `events` collection schema with vector embeddings and upserts documents into Typesense.
-
-- **`ingest-all.ts` (`npm run ingest:all`)**:
-  - Runs venues, organizations, and events ingestion sequentially.
-
-## Running Ingestion
+## Smoke tests
 
 ```bash
-# Run all ingestion pipelines in sequence
+npm run test:pipeline        # end-to-end search checks (needs Typesense)
+npm run test:stabilization   # regression / stabilization suite
+```
+
+## Running ingestion
+
+Requires `TYPESENSE_HOST` and `TYPESENSE_ADMIN_KEY` in `.env`.
+
+```bash
 npm run ingest:all
 
-# Or run individually
+# or individually
 npm run ingest:venues
 npm run ingest:orgs
 npm run ingest:events
+npm run synonyms
 ```
+
+## Notes
+
+- Events without coordinates are enriched via the campus venue / building dictionary when possible.
+- Duplicate Localist postings are merged where detectable.
+- Do not check in one-off `_tmp_*` scratch scripts.
