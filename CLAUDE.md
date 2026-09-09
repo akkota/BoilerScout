@@ -40,7 +40,12 @@
     categories?: string[];
     freeOnly?: boolean;
   };
-  route?: { points: { lat: number; lng: number }[]; bufferMeters?: number };
+  route?: {
+    points: { lat: number; lng: number }[];
+    corridorMeters?: number;
+    /** Alias for corridorMeters (accepted by the backend). */
+    bufferMeters?: number;
+  };
 }
 ```
 

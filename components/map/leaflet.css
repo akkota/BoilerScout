@@ -1,0 +1,52 @@
+/**
+ * Leaflet fills our rounded frame and does not fight Tailwind preflight.
+ * Tile images must not inherit `img { max-width: 100%; height: auto }`.
+ */
+
+.bs-map .leaflet-container {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  font-family: inherit;
+  background: #e7e5e4;
+}
+
+@media (prefers-color-scheme: dark) {
+  .bs-map .leaflet-container {
+    background: #1c1917;
+  }
+}
+
+.bs-map .leaflet-container .leaflet-tile {
+  max-width: none !important;
+  max-height: none !important;
+  /* Leaflet 1.9.4 sets plus-lighter for a Chromium bug; opaque CARTO PNGs
+     look correct (and never vanish) with normal blending. */
+  mix-blend-mode: normal;
+}
+
+/* className on DivIcon replaces leaflet-div-icon (white box + border). */
+.bs-map .bs-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+}
+
+.bs-map .leaflet-popup-content {
+  margin: 10px 12px 10px 12px;
+}
+
+.bs-map .leaflet-popup-content p {
+  margin: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .bs-map .leaflet-popup-content-wrapper,
+  .bs-map .leaflet-popup-tip {
+    background: #1c1917;
+    color: #f5f5f4;
+  }
+}

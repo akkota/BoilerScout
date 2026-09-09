@@ -115,7 +115,7 @@ export function mapTypesenseDocToEvent(
  * Executes a search query using Typesense hybrid search with:
  * - Time filtering (startAfter, startBefore)
  * - Geo filtering (center lat/lng, radiusMiles)
- * - RouteScout corridor geo-polygon filtering (route.points + corridorMeters)
+ * - RouteScout corridor geo-polygon filtering (route.points + corridorMeters/bufferMeters)
  * - Category filtering
  * - Free events filtering
  * - Factual "Why this result?" explanations

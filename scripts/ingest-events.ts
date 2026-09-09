@@ -12,13 +12,15 @@ import {
   normalizePurdueEvent,
   RawPurdueEventWrapper,
 } from "@/lib/data/normalizePurdueEvent";
+import { deduplicateEvents } from "@/lib/data/cleanPurdueData";
+import { fetchPurdueApi } from "@/lib/data/fetchPurdue";
 
 const PURDUE_EVENTS_BASE_URL = "https://events.purdue.edu/api/2/events";
 const PAGE_SIZE = 100;
 const DAYS_AHEAD = 60;
 const MAX_PAGES = 5; // Fetches up to 500 events
-const BATCH_SIZE = 25; // Smaller batch size to prevent server OUT_OF_MEMORY during vectorization
-const BATCH_DELAY_MS = 250; // Delay between batches to allow cluster memory recovery
+const BATCH_SIZE = 25; // Safe batch size to prevent cluster memory issues during vectorization
+const BATCH_DELAY_MS = 250; // Delay between batches
 
 interface PurdueApiResponse {
   events?: RawPurdueEventWrapper[];
@@ -33,7 +35,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function fetchPurdueEvents(): Promise<RawPurdueEventWrapper[]> {
   const allEvents: RawPurdueEventWrapper[] = [];
-  const seenIds = new Set<string | number>();
+  const seenInstanceKeys = new Set<string>();
 
   let currentPage = 1;
   let totalPages = 1;
@@ -44,19 +46,12 @@ async function fetchPurdueEvents(): Promise<RawPurdueEventWrapper[]> {
     const url = `${PURDUE_EVENTS_BASE_URL}?pp=${PAGE_SIZE}&page=${currentPage}&days=${DAYS_AHEAD}`;
     console.log(`Fetching page ${currentPage} from ${url}...`);
 
-    const res = await fetch(url, {
-      headers: {
-        Accept: "application/json",
-      },
-    });
-
-    if (!res.ok) {
-      const errorText = await res.text().catch(() => "Unknown error");
-      console.warn(`Failed to fetch page ${currentPage}: HTTP ${res.status} - ${errorText}`);
+    const data = await fetchPurdueApi<PurdueApiResponse>(url);
+    if (!data) {
+      console.warn(`Failed to fetch page ${currentPage}.`);
       break;
     }
 
-    const data = (await res.json()) as PurdueApiResponse;
     const rawEvents = data.events || [];
 
     if (data.page?.total) {
@@ -64,14 +59,18 @@ async function fetchPurdueEvents(): Promise<RawPurdueEventWrapper[]> {
     }
 
     for (const raw of rawEvents) {
-      const id = raw.event?.id || raw.id;
-      if (id && !seenIds.has(id)) {
-        seenIds.add(id);
+      const e = raw.event ? raw.event : raw;
+      const id = e.id;
+      const instanceId = e.event_instances?.[0]?.event_instance?.id || e.first_date || "";
+      const dedupeKey = `${id}_${instanceId}`;
+
+      if (id && !seenInstanceKeys.has(dedupeKey)) {
+        seenInstanceKeys.add(dedupeKey);
         allEvents.push(raw);
       }
     }
 
-    console.log(`  Fetched ${rawEvents.length} events from page ${currentPage}. (Total unique so far: ${allEvents.length})`);
+    console.log(`  Fetched ${rawEvents.length} events from page ${currentPage}. (Total collected: ${allEvents.length})`);
 
     if (rawEvents.length < PAGE_SIZE) {
       break;
@@ -93,42 +92,50 @@ export async function ingestEvents(): Promise<void> {
   const rawEvents = await fetchPurdueEvents();
   const fetchedCount = rawEvents.length;
 
-  // 2. Normalize events
+  // 2. Normalize and clean events
   const normalizedDocuments: TypesenseEventDocument[] = [];
   let skippedCount = 0;
+  let geocodedCount = 0;
 
   for (const raw of rawEvents) {
     const doc = normalizePurdueEvent(raw);
     if (doc) {
       normalizedDocuments.push(doc);
+      if (doc.location) geocodedCount++;
     } else {
       skippedCount++;
     }
   }
-  const normalizedCount = normalizedDocuments.length;
 
-  console.log(`\nNormalization complete:`);
-  console.log(`- Fetched:    ${fetchedCount}`);
-  console.log(`- Normalized: ${normalizedCount}`);
-  console.log(`- Skipped:    ${skippedCount}`);
+  // 3. Deduplicate across events (removes identical cross-listings, merges metadata)
+  const { uniqueEvents, duplicateCount } = deduplicateEvents(normalizedDocuments);
+  const normalizedCount = uniqueEvents.length;
 
-  // 3. Ensure Typesense collection exists and campus synonyms are applied
+  console.log(`\nData Normalization and Cleaning Complete:`);
+  console.log(`- Fetched:            ${fetchedCount}`);
+  console.log(`- Normalized:         ${normalizedDocuments.length}`);
+  console.log(`- Duplicates removed: ${duplicateCount}`);
+  console.log(`- Unique events:      ${normalizedCount}`);
+  console.log(`- With coordinates:   ${geocodedCount} (${Math.round((geocodedCount / normalizedDocuments.length) * 100)}%)`);
+  console.log(`- Skipped:            ${skippedCount}`);
+
+  // 4. Ensure Typesense collection exists and campus synonyms are applied
   const adminClient = getTypesenseAdminClient();
   await ensureEventsCollection(adminClient);
   await ensureEventSynonyms(adminClient);
 
-  // 4. Bulk import into Typesense in safe batches
+  // 5. Bulk import into Typesense in safe batches
   let importedCount = 0;
   const failures: Array<{ id?: string; error: string }> = [];
 
-  if (normalizedDocuments.length > 0) {
-    console.log(`\nImporting ${normalizedDocuments.length} documents into collection '${EVENTS_COLLECTION_NAME}' (batch size: ${BATCH_SIZE})...`);
+  if (uniqueEvents.length > 0) {
+    console.log(`\nImporting ${uniqueEvents.length} documents into collection '${EVENTS_COLLECTION_NAME}' (batch size: ${BATCH_SIZE})...`);
 
-    const totalBatches = Math.ceil(normalizedDocuments.length / BATCH_SIZE);
+    const totalBatches = Math.ceil(uniqueEvents.length / BATCH_SIZE);
 
-    for (let i = 0; i < normalizedDocuments.length; i += BATCH_SIZE) {
+    for (let i = 0; i < uniqueEvents.length; i += BATCH_SIZE) {
       const batchNum = Math.floor(i / BATCH_SIZE) + 1;
-      const chunk = normalizedDocuments.slice(i, i + BATCH_SIZE);
+      const chunk = uniqueEvents.slice(i, i + BATCH_SIZE);
 
       try {
         const results = await adminClient
@@ -171,7 +178,7 @@ export async function ingestEvents(): Promise<void> {
         }
       }
 
-      if (BATCH_DELAY_MS > 0 && i + BATCH_SIZE < normalizedDocuments.length) {
+      if (BATCH_DELAY_MS > 0 && i + BATCH_SIZE < uniqueEvents.length) {
         await sleep(BATCH_DELAY_MS);
       }
     }
@@ -179,16 +186,16 @@ export async function ingestEvents(): Promise<void> {
 
   const durationSec = ((Date.now() - startTime) / 1000).toFixed(2);
 
-  // 5. Log final summary
+  // 6. Log final summary
   console.log("\n==================================================");
   console.log("Ingestion Summary");
   console.log("==================================================");
-  console.log(`- Duration:         ${durationSec}s`);
-  console.log(`- Fetched count:    ${fetchedCount}`);
-  console.log(`- Normalized count: ${normalizedCount}`);
-  console.log(`- Skipped count:    ${skippedCount}`);
-  console.log(`- Imported count:   ${importedCount}`);
-  console.log(`- Failure count:    ${failures.length}`);
+  console.log(`- Duration:           ${durationSec}s`);
+  console.log(`- Fetched count:      ${fetchedCount}`);
+  console.log(`- Duplicates removed: ${duplicateCount}`);
+  console.log(`- Final unique count: ${normalizedCount}`);
+  console.log(`- Imported count:     ${importedCount}`);
+  console.log(`- Failure count:      ${failures.length}`);
 
   if (failures.length > 0) {
     console.warn("\nFailure details (first 5):");
@@ -199,8 +206,9 @@ export async function ingestEvents(): Promise<void> {
   console.log("==================================================");
 }
 
-// Run if directly executed
-if (require.main === module || process.argv[1]?.endsWith("ingest-events.ts")) {
+// Run when invoked directly via `tsx` / `node` (ESM-safe; avoid require.main)
+const entryScript = (process.argv[1] ?? "").replace(/\\/g, "/");
+if (/(^|\/)ingest-events(\.[cm]?[jt]s)?$/.test(entryScript)) {
   ingestEvents().catch((error) => {
     console.error("Fatal ingestion error:", error);
     process.exit(1);
