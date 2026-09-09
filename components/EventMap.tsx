@@ -5,6 +5,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "@/components/map/leaflet.css";
 import { Event } from "@/types/event";
+import type { NearPlace, RouteScoutResponse } from "@/types/search";
 import { CAMPUS_CENTER } from "@/lib/filters";
 import { escapeHtml, formatEventTime } from "@/lib/format";
 import {
@@ -38,6 +39,10 @@ interface EventMapProps {
   onHoverEvent?: (eventId: string | undefined) => void;
   /** Shown as a distinct dot when the user has enabled "near me". */
   userLocation?: { lat: number; lng: number };
+  /** Reused server-resolved Mapbox walking geometry for RouteScout. */
+  routeScout?: RouteScoutResponse;
+  /** Resolved "near <place>" anchor — kept in view so the radius reads clearly. */
+  nearPlace?: NearPlace;
 }
 
 type MarkerEntry = { marker: L.Marker; el: HTMLButtonElement };
@@ -139,12 +144,16 @@ export default function EventMap({
   onSelectEvent,
   onHoverEvent,
   userLocation,
+  routeScout,
+  nearPlace,
 }: EventMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const markersRef = useRef(new Map<string, MarkerEntry>());
   const popupRef = useRef<L.Popup | null>(null);
   const userMarkerRef = useRef<L.Marker | null>(null);
   const tilesRef = useRef<L.TileLayer | null>(null);
+  const routeLayerRef = useRef<L.Polyline | null>(null);
+  const nearCircleRef = useRef<L.Circle | null>(null);
   const fittedIdsRef = useRef("");
 
   const [map, setMap] = useState<L.Map | null>(null);
@@ -203,6 +212,10 @@ export default function EventMap({
       userMarkerRef.current?.remove();
       userMarkerRef.current = null;
       tilesRef.current = null;
+      routeLayerRef.current?.remove();
+      routeLayerRef.current = null;
+      nearCircleRef.current?.remove();
+      nearCircleRef.current = null;
       fittedIdsRef.current = "";
       instance.remove();
       setMap(null);
@@ -246,10 +259,19 @@ export default function EventMap({
 
     // Only refit when the result set actually changes, so hovering or
     // selecting never yanks the viewport away from the user.
-    const ids = mapped.map((e) => e.id).join("|");
-    if (ids && ids !== fittedIdsRef.current) {
+    const routePoints = routeScout?.points ?? [];
+    const anchor = nearPlace ? [toLatLng(nearPlace)] : [];
+    const viewPoints = [
+      ...mapped.map((event) => toLatLng(event.location!)),
+      ...routePoints.map((point) => toLatLng(point)),
+      ...anchor,
+    ];
+    const ids = `${mapped.map((e) => e.id).join("|")}::${routePoints
+      .map((point) => `${point.lat},${point.lng}`)
+      .join("|")}::${nearPlace ? `${nearPlace.lat},${nearPlace.lng}` : ""}`;
+    if (viewPoints.length > 1 && ids !== fittedIdsRef.current) {
       const bounds = L.latLngBounds(
-        mapped.map((e) => toLatLng(e.location!))
+        viewPoints
       );
       map.fitBounds(bounds, {
         padding: [64, 64],
@@ -260,7 +282,50 @@ export default function EventMap({
     }
     fittedIdsRef.current = ids;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [events, map]);
+  }, [events, map, routeScout, nearPlace]);
+
+  // --- "near <place>" radius circle ----------------------------------------
+  useEffect(() => {
+    if (!map) return;
+
+    nearCircleRef.current?.remove();
+    nearCircleRef.current = null;
+
+    if (!nearPlace) return;
+
+    nearCircleRef.current = L.circle(toLatLng(nearPlace), {
+      // Leaflet circles are metres; the contract radius is miles.
+      radius: nearPlace.radiusMiles * 1609.344,
+      color: "#0d9488",
+      weight: 2,
+      opacity: 0.8,
+      fillColor: "#0d9488",
+      fillOpacity: 0.06,
+      interactive: false,
+    }).addTo(map);
+  }, [map, nearPlace]);
+
+  // --- RouteScout geometry -------------------------------------------------
+  useEffect(() => {
+    if (!map) return;
+
+    routeLayerRef.current?.remove();
+    routeLayerRef.current = null;
+
+    if (!routeScout?.points || routeScout.points.length < 2) return;
+
+    routeLayerRef.current = L.polyline(
+      routeScout.points.map((point) => toLatLng(point)),
+      {
+        color: "#d97706",
+        weight: 5,
+        opacity: 0.9,
+        lineCap: "round",
+        lineJoin: "round",
+        interactive: false,
+      }
+    ).addTo(map);
+  }, [map, routeScout]);
 
   // --- selection / hover highlight + popup ----------------------------------
   useEffect(() => {
@@ -338,6 +403,20 @@ export default function EventMap({
         {events.length > mapped.length &&
           ` · ${events.length - mapped.length} without location`}
       </div>
+
+      {nearPlace && (
+        <div className="absolute top-10 left-2 z-10 px-2 py-1 rounded-md bg-teal-100/95 dark:bg-teal-950/95 text-[11px] font-semibold text-teal-900 dark:text-teal-100 shadow-sm pointer-events-none">
+          Within {nearPlace.radiusMiles} mi of {nearPlace.name}
+        </div>
+      )}
+
+      {routeScout && (
+        <div className="absolute top-10 left-2 z-10 px-2 py-1 rounded-md bg-amber-100/95 dark:bg-amber-950/95 text-[11px] font-semibold text-amber-900 dark:text-amber-100 shadow-sm pointer-events-none">
+          RouteScout{routeScout.originName && routeScout.destinationName
+            ? `: ${routeScout.originName} → ${routeScout.destinationName}`
+            : " active"}
+        </div>
+      )}
 
       {mapError && (
         <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-stone-100/95 dark:bg-stone-900/95 p-6 text-center">

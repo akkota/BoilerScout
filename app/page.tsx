@@ -6,7 +6,9 @@ import SearchBar from "@/components/SearchBar";
 import ExampleQueries from "@/components/ExampleQueries";
 import FilterBar from "@/components/FilterBar";
 import EventList from "@/components/EventList";
-import { searchEvents } from "@/lib/api/search";
+import { discoverCampus } from "@/lib/api/discover";
+import { isMockMode, searchEvents } from "@/lib/api/search";
+import DiscoverGroups from "@/components/DiscoverGroups";
 import {
   CAMPUS_CENTER,
   DEFAULT_CATEGORIES,
@@ -15,7 +17,10 @@ import {
   buildSearchFilters,
   countActiveFilters,
 } from "@/lib/filters";
+import { parseRouteIntent } from "@/lib/search/parseRouteIntent";
+import type { DiscoverOrganization, DiscoverVenue } from "@/types/discover";
 import { Event } from "@/types/event";
+import type { NearPlace, RouteScoutResponse } from "@/types/search";
 
 // Leaflet + CSS tiles — keep the map off the critical path so search is
 // interactive immediately. SSR is off because Leaflet touches `window`.
@@ -50,6 +55,13 @@ export default function Home() {
   const [ready, setReady] = useState(false);
 
   const [events, setEvents] = useState<Event[]>([]);
+  const [routeScout, setRouteScout] = useState<RouteScoutResponse | undefined>();
+  const [routeError, setRouteError] = useState<string | undefined>();
+  const [nearPlace, setNearPlace] = useState<NearPlace | undefined>();
+  const [locationError, setLocationError] = useState<string | undefined>();
+  const [mockMode, setMockMode] = useState(false);
+  const [organizations, setOrganizations] = useState<DiscoverOrganization[]>([]);
+  const [venues, setVenues] = useState<DiscoverVenue[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tookMs, setTookMs] = useState<number | null>(null);
@@ -83,15 +95,52 @@ export default function Home() {
     setIsLoading(true);
     setError(null);
 
+    const trimmed = q.trim();
+    const routeIntent = parseRouteIntent(trimmed);
+    // RouteScout queries go through /api/search only; discover uses residual
+    // interest text (e.g. "AI") when present, otherwise skips federated cards.
+    const discoverQuery = routeIntent.isRouteQuery
+      ? routeIntent.contentQuery.trim()
+      : trimmed;
+
     try {
-      const response = await searchEvents({
+      // Events stay on /api/search (filters + NL RouteScout). Federated orgs/venues
+      // come from /api/discover for normal (or residual) text queries.
+      const searchPromise = searchEvents({
         query: q,
         filters: buildSearchFilters(f),
       });
+      const discoverPromise = discoverQuery
+        ? discoverCampus({ query: discoverQuery, limitPerType: 5 }).catch(
+            (err) => {
+              console.error("Discover failed:", err);
+              return null;
+            }
+          )
+        : Promise.resolve(null);
+
+      const [response, discover] = await Promise.all([
+        searchPromise,
+        discoverPromise,
+      ]);
       if (requestId !== requestIdRef.current) return;
 
       setEvents(response.events);
+      setRouteScout(response.routeScout);
+      setRouteError(response.routeError);
+      setNearPlace(response.nearPlace);
+      setLocationError(response.locationError);
       setTookMs(response.tookMs);
+      setOrganizations(
+        discover?.groups.organizations.status === "ok"
+          ? discover.groups.organizations.items
+          : []
+      );
+      setVenues(
+        discover?.groups.venues.status === "ok"
+          ? discover.groups.venues.items
+          : []
+      );
       setSelectedEventId((id) =>
         id && response.events.some((e) => e.id === id) ? id : undefined
       );
@@ -108,6 +157,12 @@ export default function Home() {
       console.error("Search failed:", err);
       setError(err instanceof Error ? err.message : "Failed to load events");
       setEvents([]);
+      setRouteScout(undefined);
+      setRouteError(undefined);
+      setNearPlace(undefined);
+      setLocationError(undefined);
+      setOrganizations([]);
+      setVenues([]);
       setTookMs(null);
       setSelectedEventId(undefined);
       setHoveredEventId(undefined);
@@ -123,6 +178,7 @@ export default function Home() {
   useEffect(() => {
     const restored = initialQueryFromUrl();
     if (restored) setQuery(restored);
+    setMockMode(isMockMode());
     setReady(true);
   }, []);
 
@@ -192,14 +248,32 @@ export default function Home() {
           onSelectEvent={handleSelectFromMap}
           onHoverEvent={setHoveredEventId}
           userLocation={filters.nearMe ? (filters.center ?? CAMPUS_CENTER) : undefined}
+          routeScout={routeScout}
+          nearPlace={nearPlace}
         />
       </section>
 
+      {mockMode && (
+        <div
+          role="status"
+          className="rounded-lg border-2 border-amber-500 bg-amber-100 px-4 py-2 text-sm font-bold tracking-wide text-amber-950 dark:bg-amber-950 dark:text-amber-100"
+        >
+          MOCK DATA — live Purdue and Typesense results are disabled in this browser.
+        </div>
+      )}
+
       {/* Results header */}
       <section className="flex items-center justify-between gap-3 pt-2">
-        <h2 className="text-xl font-bold">
-          {query ? `Results for "${query}"` : "Upcoming Events"}
-        </h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-xl font-bold">
+            {query ? `Results for "${query}"` : "Upcoming Events"}
+          </h2>
+          {nearPlace && (
+            <span className="px-2 py-0.5 rounded-full bg-teal-100 dark:bg-teal-950 text-teal-900 dark:text-teal-100 text-[11px] font-semibold">
+              📍 within {nearPlace.radiusMiles} mi of {nearPlace.name}
+            </span>
+          )}
+        </div>
         <div
           className="text-xs text-stone-500 dark:text-stone-400 text-right"
           aria-live="polite"
@@ -208,8 +282,14 @@ export default function Home() {
           {isLoading
             ? "Searching…"
             : hasSearched && !error
-              ? `${events.length} event${events.length === 1 ? "" : "s"} found` +
-                (tookMs !== null ? ` in ${tookMs} ms` : "") +
+              ? `${events.length} event${events.length === 1 ? "" : "s"}` +
+                (organizations.length
+                  ? ` · ${organizations.length} org${organizations.length === 1 ? "" : "s"}`
+                  : "") +
+                (venues.length
+                  ? ` · ${venues.length} venue${venues.length === 1 ? "" : "s"}`
+                  : "") +
+                (tookMs !== null ? ` · ${tookMs} ms` : "") +
                 (activeFilterCount > 0
                   ? ` · ${activeFilterCount} filter${activeFilterCount === 1 ? "" : "s"}`
                   : "")
@@ -234,19 +314,61 @@ export default function Home() {
         </div>
       )}
 
-      {/* Results */}
-      <section>
-        <EventList
-          events={events}
+      {/* "near <place>" resolution error */}
+      {locationError && !isLoading && (
+        <div
+          role="alert"
+          className="p-4 rounded-lg bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-900 text-amber-800 dark:text-amber-200 text-sm flex items-start gap-3"
+        >
+          <span className="text-lg shrink-0">📍</span>
+          <div>
+            <p className="font-semibold">Couldn&apos;t resolve that location</p>
+            <p className="mt-1 text-amber-700 dark:text-amber-300">{locationError}</p>
+          </div>
+        </div>
+      )}
+
+      {/* RouteScout resolution error */}
+      {routeError && !isLoading && (
+        <div
+          role="alert"
+          className="p-4 rounded-lg bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-900 text-amber-800 dark:text-amber-200 text-sm flex items-start gap-3"
+        >
+          <span className="text-lg shrink-0">🗺️</span>
+          <div>
+            <p className="font-semibold">RouteScout could not plan this route</p>
+            <p className="mt-1 text-amber-700 dark:text-amber-300">{routeError}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Grouped discovery: Events (filtered) + Organizations + Venues */}
+      <section className="space-y-8">
+        <div className="space-y-3">
+          {(query.trim() || events.length > 0 || isLoading) && (
+            <h2 className="text-sm font-bold tracking-[0.14em] uppercase text-stone-500 dark:text-stone-400">
+              Events
+            </h2>
+          )}
+          <EventList
+            events={events}
+            isLoading={isLoading}
+            query={query}
+            hasError={Boolean(error)}
+            hasActiveFilters={activeFilterCount > 0}
+            onClearFilters={() => setFilters({ ...DEFAULT_FILTER_STATE })}
+            selectedEventId={selectedEventId}
+            hoveredEventId={hoveredEventId}
+            onSelectEvent={setSelectedEventId}
+            onHoverEvent={setHoveredEventId}
+          />
+        </div>
+
+        <DiscoverGroups
+          organizations={organizations}
+          venues={venues}
           isLoading={isLoading}
           query={query}
-          hasError={Boolean(error)}
-          hasActiveFilters={activeFilterCount > 0}
-          onClearFilters={() => setFilters({ ...DEFAULT_FILTER_STATE })}
-          selectedEventId={selectedEventId}
-          hoveredEventId={hoveredEventId}
-          onSelectEvent={setSelectedEventId}
-          onHoverEvent={setHoveredEventId}
         />
       </section>
     </main>

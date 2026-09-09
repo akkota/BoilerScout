@@ -20,6 +20,7 @@ export interface RawPurdueEventWrapper {
   description_text?: string;
   location?: string;
   location_name?: string;
+  room_number?: string | null;
   geo?: {
     latitude?: string | number | null;
     longitude?: string | number | null;
@@ -54,16 +55,91 @@ export interface RawPurdueEventWrapper {
 
 export type RawPurdueEvent = Omit<RawPurdueEventWrapper, "event">;
 
+/** Approximate centre of the Purdue West Lafayette campus. */
+const PURDUE_CAMPUS_CENTER: [number, number] = [40.4266, -86.9166];
+
+/**
+ * How far a Localist coordinate may sit from the campus venue its own location name
+ * claims before we treat the coordinate as wrong. Localist frequently geocodes a bare
+ * street address to the wrong city (e.g. "100 South Grant Street" -> Denver, CO).
+ */
+const VENUE_MISMATCH_MILES = 2;
+
+function haversineMiles(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number
+): number {
+  const R = 3958.8;
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+/** Resolve a venue hint against the campus venue directory, then the building lookup. */
+function resolveCampusVenue(
+  hint: string | undefined | null
+): { name: string; location: [number, number] } | undefined {
+  if (!hint || !hint.trim()) return undefined;
+
+  const venue = resolveVenueCoordinates(hint);
+  if (venue) {
+    return { name: venue.name, location: venue.location };
+  }
+
+  const building = resolvePurdueBuilding(hint);
+  if (building) {
+    return { name: building.name, location: [building.lat, building.lng] };
+  }
+
+  return undefined;
+}
+
+/** Per-run ingestion diagnostics for coordinate quality. */
+export interface NormalizationReport {
+  /** Events that got coordinates straight from Localist. */
+  fromLocalist: number;
+  /** Events geocoded from the campus venue / building directory. */
+  fromVenueLookup: number;
+  /** Localist coordinates replaced because they contradicted a known campus venue. */
+  correctedCoordinates: number;
+  /** Human-readable log of each correction. */
+  corrections: string[];
+  /** Events left without coordinates. */
+  missing: number;
+  /** Unresolved venue names -> occurrence count. */
+  unresolvedVenues: Map<string, number>;
+}
+
+export function createNormalizationReport(): NormalizationReport {
+  return {
+    fromLocalist: 0,
+    fromVenueLookup: 0,
+    correctedCoordinates: 0,
+    corrections: [],
+    missing: 0,
+    unresolvedVenues: new Map(),
+  };
+}
+
 /**
  * Normalizes a raw Purdue Localist API event into a TypesenseEventDocument.
  * - Cleans HTML tags, HTML entities, and formatting artifacts.
  * - Canonicalizes organization names and deduplicates categories.
- * - Prefers Localist coordinates; otherwise resolves known campus venues/buildings.
- * - Leaves coordinates undefined when no confident match exists.
+ * - Prefers Localist coordinates, unless they contradict the campus venue the event
+ *   itself names, in which case the verified campus mapping wins.
+ * - Otherwise resolves known campus venues/buildings from the location name or room.
+ * - Leaves coordinates undefined when no confident match exists (never guesses).
  * Returns null if the event is missing mandatory identification or title.
  */
 export function normalizePurdueEvent(
-  raw: RawPurdueEventWrapper
+  raw: RawPurdueEventWrapper,
+  report?: NormalizationReport
 ): TypesenseEventDocument | null {
   const item: RawPurdueEvent = raw.event ? raw.event : raw;
 
@@ -156,9 +232,12 @@ export function normalizePurdueEvent(
     location_name = cleanTitle(item.geo.street);
   }
 
-  // Geopoint: Typesense requires [latitude, longitude]
-  // Prefer explicit Localist coordinates; otherwise resolve known campus venues/buildings.
-  // Do NOT invent / guess coordinates when no confident match exists.
+  // Geopoint: Typesense requires [latitude, longitude].
+  //
+  // Resolution order:
+  //   1. Localist coordinates, when they are valid and not contradicted by the venue name
+  //   2. Known Purdue campus venue / building lookup (location name, then room number)
+  //   3. Otherwise undefined -- never invent / guess coordinates.
   let location: [number, number] | undefined;
   const rawLat = item.geo?.latitude;
   const rawLng = item.geo?.longitude;
@@ -179,19 +258,61 @@ export function normalizePurdueEvent(
     }
   }
 
-  // If coordinates are missing, resolve from campus venue directory, then building lookup.
-  if (!location && location_name) {
-    const resolvedVenue = resolveVenueCoordinates(location_name);
-    if (resolvedVenue) {
-      location = resolvedVenue.location;
-      // If the location name was just an abbreviation (e.g. "RAWL"), enrich location_name
-      if (location_name.length <= 4 && resolvedVenue.name) {
-        location_name = resolvedVenue.name;
-      }
+  // Known campus venue implied by the event's own location name or room number.
+  const campusVenue =
+    resolveCampusVenue(location_name) ?? resolveCampusVenue(item.room_number);
+
+  if (campusVenue) {
+    if (!location) {
+      // Source priority 2: geocode from the verified campus mapping.
+      location = campusVenue.location;
+      if (report) report.fromVenueLookup++;
     } else {
-      const resolvedBuilding = resolvePurdueBuilding(location_name);
-      if (resolvedBuilding) {
-        location = [resolvedBuilding.lat, resolvedBuilding.lng];
+      // Sanity check: an event that claims a known campus venue must not sit far from it.
+      const drift = haversineMiles(
+        location[0],
+        location[1],
+        campusVenue.location[0],
+        campusVenue.location[1]
+      );
+      if (drift > VENUE_MISMATCH_MILES) {
+        if (report) {
+          report.correctedCoordinates++;
+          report.corrections.push(
+            `${title} @ "${location_name ?? item.room_number}": Localist [${location[0]}, ${location[1]}] was ` +
+              `${Math.round(drift)} mi from ${campusVenue.name}; using verified campus coordinates.`
+          );
+        }
+        location = campusVenue.location;
+      } else {
+        if (report) report.fromLocalist++;
+      }
+    }
+
+    // If the location name was just a building code (e.g. "RAWL"), enrich it.
+    if (location_name && location_name.length <= 4) {
+      location_name = campusVenue.name;
+    }
+  } else if (location) {
+    if (report) report.fromLocalist++;
+  }
+
+  if (report) {
+    if (!location) {
+      report.missing++;
+      const key = location_name?.trim() || "(no location name)";
+      report.unresolvedVenues.set(key, (report.unresolvedVenues.get(key) ?? 0) + 1);
+    } else {
+      const fromCampus = haversineMiles(
+        location[0],
+        location[1],
+        PURDUE_CAMPUS_CENTER[0],
+        PURDUE_CAMPUS_CENTER[1]
+      );
+      if (fromCampus > 500) {
+        report.corrections.push(
+          `WARNING: ${title} @ "${location_name ?? "?"}" kept coordinates ${Math.round(fromCampus)} mi from campus.`
+        );
       }
     }
   }

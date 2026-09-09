@@ -1,4 +1,5 @@
 import { mockEvents } from "@/lib/data/mockEvents";
+import { filterCampusEvents } from "@/lib/search/campusScope";
 import { mapTypesenseDocToEvent } from "@/lib/search/searchEvents";
 import { getTypesenseSearchClient } from "@/lib/typesense/client";
 import {
@@ -9,6 +10,7 @@ import {
   DiscoverEvent,
   DiscoverGroup,
   DiscoverOrganization,
+  DiscoverRequest,
   DiscoverResponse,
   DiscoverVenue,
 } from "@/types/discover";
@@ -183,7 +185,7 @@ function normalizeOrganization(
     description: stringValue(document.description) ?? "",
     categories,
     url: stringValue(document.url),
-    imageUrl: stringValue(document.image_url),
+    imageUrl: stringValue(document.photo_url),
     reasons: searchReasons(name, categories, query, hit, "Campus organization match"),
   };
 }
@@ -218,14 +220,79 @@ function normalizeVenue(
     address: stringValue(document.address),
     location: validLocation,
     url: stringValue(document.url),
-    imageUrl: stringValue(document.image_url),
+    imageUrl: stringValue(document.photo_url),
     reasons: searchReasons(name, [], query, hit, "Campus venue match"),
   };
 }
 
+function resolveDiscoverArgs(
+  queryOrRequest: unknown,
+  requestedLimit?: unknown
+): { query: string; limit: number } | null {
+  let query: unknown = queryOrRequest;
+  let limitRaw: unknown = requestedLimit;
+
+  // Accept DiscoverRequest so callers cannot crash fallback with a non-string query.
+  if (isRecord(queryOrRequest) && typeof queryOrRequest.query === "string") {
+    query = queryOrRequest.query;
+    if (limitRaw === undefined) {
+      limitRaw = queryOrRequest.limitPerType;
+    }
+  }
+
+  if (typeof query !== "string") {
+    return null;
+  }
+
+  const trimmed = query.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+
+  const parsedLimit =
+    typeof limitRaw === "number" && Number.isFinite(limitRaw)
+      ? Math.floor(limitRaw)
+      : DEFAULT_LIMIT_PER_TYPE;
+
+  return {
+    query: trimmed,
+    limit: Math.min(Math.max(parsedLimit, 1), MAX_LIMIT_PER_TYPE),
+  };
+}
+
+async function searchCollection(
+  collection: string,
+  params: {
+    q: string;
+    query_by: string;
+    num_typos: number;
+    drop_tokens_threshold: number;
+    per_page: number;
+    exclude_fields: string;
+  }
+): Promise<MultiSearchResult> {
+  try {
+    const result = await getTypesenseSearchClient()
+      .collections(collection)
+      .documents()
+      .search(params);
+    return result as MultiSearchResult;
+  } catch (error) {
+    const httpStatus = (error as { httpStatus?: number }).httpStatus;
+    console.error(
+      `Discover search failed for collection '${collection}':`,
+      httpStatus ?? "request failed"
+    );
+    return {
+      code: typeof httpStatus === "number" ? httpStatus : 500,
+      error: "unavailable",
+    };
+  }
+}
+
 function cachedEvents(query: string, limit: number): DiscoverGroup<DiscoverEvent> {
   const normalizedQuery = query.toLowerCase();
-  const items = mockEvents
+  const items = filterCampusEvents(mockEvents)
     .filter((event) => {
       const searchableText = [
         event.title,
@@ -247,84 +314,22 @@ function cachedEvents(query: string, limit: number): DiscoverGroup<DiscoverEvent
 }
 
 /**
- * Runs a grouped Typesense federated search. Each collection result is handled
- * independently because organizations and venues can be deployed later than
- * events without making event discovery unavailable.
+ * Runs federated campus discovery. Each collection is queried independently so
+ * missing organizations/venues collections return `unavailable` without
+ * crashing events search or fallback text matching.
  */
 export async function discover(
-  query: string,
+  queryOrRequest: string | DiscoverRequest,
   requestedLimit?: number
 ): Promise<DiscoverResponse> {
   const startTime = Date.now();
-  const limit = Math.min(
-    Math.max(Math.floor(requestedLimit ?? DEFAULT_LIMIT_PER_TYPE), 1),
-    MAX_LIMIT_PER_TYPE
-  );
+  const resolved = resolveDiscoverArgs(queryOrRequest, requestedLimit);
 
-  try {
-    const response = (await getTypesenseSearchClient().multiSearch.perform({
-      searches: [
-        {
-          collection: EVENTS_COLLECTION_NAME,
-          q: query,
-          query_by: "title,description,organization,categories,embedding",
-          num_typos: 2,
-          drop_tokens_threshold: 0,
-          per_page: limit,
-          exclude_fields: "embedding",
-        },
-        {
-          collection: ORGANIZATIONS_COLLECTION_NAME,
-          q: query,
-          query_by: "name,description,categories,embedding",
-          num_typos: 2,
-          drop_tokens_threshold: 0,
-          per_page: limit,
-          exclude_fields: "embedding",
-        },
-        {
-          collection: VENUES_COLLECTION_NAME,
-          q: query,
-          query_by: "name,description,address,embedding",
-          num_typos: 2,
-          drop_tokens_threshold: 0,
-          per_page: limit,
-          exclude_fields: "embedding",
-        },
-      ],
-    })) as unknown;
-
-    const results =
-      isRecord(response) && Array.isArray(response.results)
-        ? response.results.map((result) =>
-            isRecord(result) ? (result as MultiSearchResult) : undefined
-          )
-        : [];
-
-    const events = normalizeGroup(results[0], (document, hit) =>
-      normalizeEvent(document, hit, query)
-    );
-    const organizations = normalizeGroup(results[1], (document, hit) =>
-      normalizeOrganization(document, hit, query)
-    );
-    const venues = normalizeGroup(results[2], (document, hit) =>
-      normalizeVenue(document, hit, query)
-    );
-
-    const groups = { events, organizations, venues };
+  if (!resolved) {
     return {
-      query,
-      groups,
-      partial: Object.values(groups).some((group) => group.status !== "ok"),
-      tookMs: Date.now() - startTime,
-    };
-  } catch (error) {
-    console.error("Typesense federated search error, using cached events:", error);
-
-    return {
-      query,
+      query: "",
       groups: {
-        events: cachedEvents(query, limit),
+        events: createUnavailableGroup<DiscoverEvent>(),
         organizations: createUnavailableGroup<DiscoverOrganization>(),
         venues: createUnavailableGroup<DiscoverVenue>(),
       },
@@ -332,4 +337,81 @@ export async function discover(
       tookMs: Date.now() - startTime,
     };
   }
+
+  const { query, limit } = resolved;
+
+  const [eventsResult, organizationsResult, venuesResult] = await Promise.all([
+    searchCollection(EVENTS_COLLECTION_NAME, {
+      q: query,
+      query_by: "title,description,organization,categories,embedding",
+      num_typos: 2,
+      drop_tokens_threshold: 0,
+      per_page: limit,
+      exclude_fields: "embedding",
+    }),
+    searchCollection(ORGANIZATIONS_COLLECTION_NAME, {
+      q: query,
+      query_by: "name,description,categories,embedding",
+      num_typos: 2,
+      drop_tokens_threshold: 0,
+      per_page: limit,
+      exclude_fields: "embedding",
+    }),
+    searchCollection(VENUES_COLLECTION_NAME, {
+      q: query,
+      query_by: "name,short_name,aliases,address,type,embedding",
+      num_typos: 2,
+      drop_tokens_threshold: 0,
+      per_page: limit,
+      exclude_fields: "embedding",
+    }),
+  ]);
+
+  let events = normalizeGroup(eventsResult, (document, hit) =>
+    normalizeEvent(document, hit, query)
+  );
+  if (events.status !== "ok") {
+    events = cachedEvents(query, limit);
+  } else {
+    const campusItems = filterCampusEvents(events.items);
+    events = {
+      ...events,
+      items: campusItems,
+      found: campusItems.length,
+    };
+  }
+
+  const organizations = normalizeGroup(
+    organizationsResult,
+    (document, hit) => normalizeOrganization(document, hit, query)
+  );
+  // Keep campus orgs; Localist also indexes Indianapolis units.
+  if (organizations.status === "ok") {
+    const campusOrgs = organizations.items.filter((org) => {
+      const text = `${org.name} ${org.description}`;
+      return !/\bindianapolis\b/i.test(text) && !/\bindy\b/i.test(text);
+    });
+    organizations.items = campusOrgs;
+    organizations.found = campusOrgs.length;
+  }
+
+  const venues = normalizeGroup(venuesResult, (document, hit) =>
+    normalizeVenue(document, hit, query)
+  );
+  if (venues.status === "ok") {
+    const campusVenues = venues.items.filter((venue) => {
+      const text = `${venue.name} ${venue.address ?? ""}`;
+      return !/\bindianapolis\b/i.test(text) && !/\bindy\b/i.test(text);
+    });
+    venues.items = campusVenues;
+    venues.found = campusVenues.length;
+  }
+
+  const groups = { events, organizations, venues };
+  return {
+    query,
+    groups,
+    partial: Object.values(groups).some((group) => group.status !== "ok"),
+    tookMs: Date.now() - startTime,
+  };
 }

@@ -65,6 +65,17 @@ const PURDUE_BUILDINGS: BuildingEntry[] = [
     ],
   },
   {
+    name: "Hillenbrand Hall",
+    lat: 40.4267,
+    lng: -86.9267,
+    aliases: [
+      "hill",
+      "hillenbrand",
+      "hillenbrand hall",
+      "hillenbrand residence hall",
+    ],
+  },
+  {
     name: "Stewart Center",
     lat: 40.425084,
     lng: -86.912711,
@@ -387,10 +398,18 @@ const PURDUE_BUILDINGS: BuildingEntry[] = [
     aliases: ["schm", "schleman", "schleman hall"],
   },
   {
-    name: "Heavilon Hall",
+    // These coordinates are the OSM footprint for Felix Haas Hall; Heavilon Hall is a
+    // separate building further east on the Oval and is listed below.
+    name: "Felix Haas Hall",
     lat: 40.426823,
     lng: -86.916311,
-    aliases: ["haas", "heavilon", "heavilon hall", "felix haas hall"],
+    aliases: ["haas", "haas hall", "felix haas hall"],
+  },
+  {
+    name: "Heavilon Hall",
+    lat: 40.4264,
+    lng: -86.9114,
+    aliases: ["heav", "heavilon", "heavilon hall"],
   },
   {
     name: "Young Hall",
@@ -503,6 +522,18 @@ const PURDUE_BUILDINGS: BuildingEntry[] = [
     lat: 40.437747,
     lng: -86.941213,
     aliases: ["alexander field", "ross alexander field"],
+  },
+  {
+    name: "Mitchell E. Daniels, Jr. School of Business",
+    lat: 40.423682,
+    lng: -86.910936,
+    aliases: [
+      "dsb",
+      "mitch daniels school of business",
+      "mitchell e daniels jr school of business",
+      "daniels school of business",
+      "daniels school",
+    ],
   },
   {
     name: "Purdue University Airport",

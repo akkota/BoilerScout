@@ -4,6 +4,10 @@
  *
  * Provides authoritative building codes, aliases, and coordinates for campus venues.
  * Used by venue normalization and event ingestion to resolve missing coordinates.
+ *
+ * Coordinates are OpenStreetMap building-footprint centroids for the Purdue West
+ * Lafayette campus (verified against Localist street addresses). Do not hand-edit
+ * a coordinate without a verifiable source.
  */
 
 export interface CampusBuildingDefinition {
@@ -20,7 +24,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "Thomas S. and Harvey D. Wilmeth Active Learning Center",
     shortName: "WALC",
     aliases: ["WALC", "Wilmeth Active Learning Center", "Wilmeth", "Active Learning Center"],
-    location: [40.427339, -86.913848],
+    location: [40.427389, -86.913229],
     address: "340 Centennial Mall Dr, West Lafayette, IN 47907",
     type: "academic",
   },
@@ -28,7 +32,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "Purdue Memorial Union",
     shortName: "PMU",
     aliases: ["PMU", "Memorial Union", "Purdue Union", "Union Rack and Roll"],
-    location: [40.424724, -86.910546],
+    location: [40.425029, -86.911156],
     address: "101 N Grant St, West Lafayette, IN 47906",
     type: "student_center",
   },
@@ -45,7 +49,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
       "Robert L. Ringel Gallery - Stewart Center",
       "Ringel Gallery",
     ],
-    location: [40.42476, -86.911951],
+    location: [40.425084, -86.912711],
     address: "128 Memorial Mall, West Lafayette, IN 47907",
     type: "student_center",
   },
@@ -53,7 +57,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "Jerry S. Rawls Hall",
     shortName: "RAWL",
     aliases: ["RAWL", "Rawls Hall", "Rawls", "Jerry S Rawls Hall"],
-    location: [40.4237, -86.9102],
+    location: [40.423689, -86.909783],
     address: "100 S Grant St, West Lafayette, IN 47906",
     type: "academic",
   },
@@ -61,7 +65,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "Krannert Building",
     shortName: "KRAN",
     aliases: ["KRAN", "Krannert", "Krannert Building", "Krannert Center for Exec Educ & Research"],
-    location: [40.4242, -86.9102],
+    location: [40.423682, -86.910936],
     address: "403 W Mitch Daniels Blvd, West Lafayette, IN 47907",
     type: "academic",
   },
@@ -74,7 +78,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
       "Morgan Center",
       "Burton D. Morgan Ctr for Entrepreneurshp",
     ],
-    location: [40.4237, -86.9212],
+    location: [40.423753, -86.922846],
     address: "1201 W Mitch Daniels Blvd, West Lafayette, IN 47907",
     type: "academic",
   },
@@ -89,7 +93,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
       "Lawson",
       "Richard and Patricia Lawson Computer Science Building",
     ],
-    location: [40.42773, -86.916992],
+    location: [40.427796, -86.916995],
     address: "305 N University St, West Lafayette, IN 47907",
     type: "academic",
   },
@@ -97,7 +101,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "Neil Armstrong Hall of Engineering",
     shortName: "ARMS",
     aliases: ["ARMS", "Armstrong Hall", "Armstrong Hall of Engineering", "Armstrong"],
-    location: [40.431053, -86.914905],
+    location: [40.430918, -86.914984],
     address: "701 W Stadium Ave, West Lafayette, IN 47907",
     type: "academic",
   },
@@ -111,7 +115,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
       "France A. Córdova Recreational Sports Center",
       "Cordova Recreational Sports Center",
     ],
-    location: [40.4284, -86.9221],
+    location: [40.428422, -86.922447],
     address: "355 N Martin Jischke Dr, West Lafayette, IN 47907",
     type: "recreation",
   },
@@ -119,7 +123,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "Edward C. Elliott Hall of Music",
     shortName: "ELLT",
     aliases: ["ELLT", "Elliott Hall of Music", "Elliott Hall", "Elliott"],
-    location: [40.4281, -86.9158],
+    location: [40.427896, -86.915007],
     address: "712 3rd St, West Lafayette, IN 47907",
     type: "cultural_center",
   },
@@ -136,7 +140,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
       "Patti and Rusty Rueff Galleries - Pao Hall",
       "Rueff Galleries",
     ],
-    location: [40.4235, -86.9100],
+    location: [40.422547, -86.912984],
     address: "552 W Wood St, West Lafayette, IN 47907",
     type: "cultural_center",
   },
@@ -144,7 +148,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "Felix Haas Hall",
     shortName: "HAAS",
     aliases: ["HAAS", "Haas Hall", "Haas"],
-    location: [40.4282, -86.914],
+    location: [40.426823, -86.916311],
     address: "640 Oval Dr, West Lafayette, IN 47907",
     type: "academic",
   },
@@ -152,7 +156,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "Krach Leadership Center",
     shortName: "KRCH",
     aliases: ["KRCH", "Krach Leadership Center", "Krach"],
-    location: [40.4294, -86.9213],
+    location: [40.427589, -86.921245],
     address: "1198 3rd St, West Lafayette, IN 47906",
     type: "student_center",
   },
@@ -160,7 +164,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "University Hall",
     shortName: "UNIV",
     aliases: ["UNIV", "University Hall", "Purdue OWL Writers' Room", "Purdue OWL Writers' Room (UNIV 235)"],
-    location: [40.4258, -86.9137],
+    location: [40.42527, -86.915193],
     address: "672 Oval Dr, West Lafayette, IN 47907",
     type: "academic",
   },
@@ -168,7 +172,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "Stanley Coulter Hall",
     shortName: "SC",
     aliases: ["SC", "Stanley Coulter Hall", "Stanley Coulter"],
-    location: [40.4252, -86.9137],
+    location: [40.426528, -86.914382],
     address: "640 Oval Dr, West Lafayette, IN 47907",
     type: "academic",
   },
@@ -176,7 +180,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "Class of 1950 Lecture Hall",
     shortName: "CL50",
     aliases: ["CL50", "Class of 1950", "Class of 1950 Lecture Hall"],
-    location: [40.4273, -86.9147],
+    location: [40.426347, -86.915058],
     address: "250 N University St, West Lafayette, IN 47907",
     type: "academic",
   },
@@ -184,7 +188,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "Electrical Engineering Building",
     shortName: "EE",
     aliases: ["EE", "EE Building", "Max W & Maileen Brown Family Hall", "BHEE"],
-    location: [40.4289, -86.9119],
+    location: [40.428637, -86.911964],
     address: "465 Northwestern Ave, West Lafayette, IN 47907",
     type: "academic",
   },
@@ -192,7 +196,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "Mechanical Engineering Building",
     shortName: "ME",
     aliases: ["ME", "ME Building", "Mechanical Engineering"],
-    location: [40.4293, -86.9127],
+    location: [40.428296, -86.912879],
     address: "585 Purdue Mall, West Lafayette, IN 47907",
     type: "academic",
   },
@@ -200,7 +204,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "Materials and Electrical Engineering",
     shortName: "MSEE",
     aliases: ["MSEE", "Materials and Electrical Engineering Building"],
-    location: [40.4295, -86.9115],
+    location: [40.429341, -86.91267],
     address: "501 Northwestern Ave, West Lafayette, IN 47907",
     type: "academic",
   },
@@ -208,7 +212,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "Delon and Elizabeth Hampton Hall of Civil Engineering",
     shortName: "HAMP",
     aliases: ["HAMP", "Hampton Hall", "Civil Engineering"],
-    location: [40.4300, -86.9148],
+    location: [40.430237, -86.914766],
     address: "550 Stadium Mall Dr, West Lafayette, IN 47907",
     type: "academic",
   },
@@ -216,7 +220,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "Physics Building",
     shortName: "PHYS",
     aliases: ["PHYS", "Physics Building"],
-    location: [40.4291, -86.9139],
+    location: [40.430102, -86.913451],
     address: "525 Northwestern Ave, West Lafayette, IN 47907",
     type: "academic",
   },
@@ -224,7 +228,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "Richard Benbridge Wetherill Lab of Chem",
     shortName: "WTHR",
     aliases: ["WTHR", "Wetherill Laboratory of Chemistry", "Wetherill", "Wetherill Lab"],
-    location: [40.4265, -86.9127],
+    location: [40.426469, -86.9131],
     address: "560 Oval Dr, West Lafayette, IN 47907",
     type: "academic",
   },
@@ -232,7 +236,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "Herbert C. Brown Laboratory of Chemistry",
     shortName: "BRWN",
     aliases: ["BRWN", "Brown Laboratory of Chemistry", "Brown Lab"],
-    location: [40.4262, -86.9122],
+    location: [40.426583, -86.911963],
     address: "560 Oval Dr, West Lafayette, IN 47907",
     type: "academic",
   },
@@ -240,7 +244,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "Mathematical Sciences Building",
     shortName: "MATH",
     aliases: ["MATH", "Math Sciences", "Mathematical Sciences"],
-    location: [40.4261, -86.9171],
+    location: [40.426254, -86.91583],
     address: "150 N University St, West Lafayette, IN 47907",
     type: "academic",
   },
@@ -248,7 +252,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "Steven C. Beering Hall of Lib Arts & Ed",
     shortName: "BRNG",
     aliases: ["BRNG", "Beering Hall", "Beering"],
-    location: [40.4258, -86.9161],
+    location: [40.425575, -86.916061],
     address: "100 N University St, West Lafayette, IN 47907",
     type: "academic",
   },
@@ -264,7 +268,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "John W. Hicks Undergraduate Library",
     shortName: "HIKS",
     aliases: ["HIKS", "Hicks Library", "Hicks Undergraduate Library"],
-    location: [40.4243, -86.9115],
+    location: [40.424535, -86.912657],
     address: "504 W Mitch Daniels Blvd, West Lafayette, IN 47907",
     type: "library",
   },
@@ -272,7 +276,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "Lilly Hall of Life Sciences",
     shortName: "LILY",
     aliases: ["LILY", "Lilly Hall", "Life Sciences"],
-    location: [40.4226, -86.9168],
+    location: [40.423225, -86.918253],
     address: "915 W Mitch Daniels Blvd, West Lafayette, IN 47907",
     type: "academic",
   },
@@ -280,7 +284,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "Smith Hall",
     shortName: "SMTH",
     aliases: ["SMTH", "Smith Hall"],
-    location: [40.4226, -86.9155],
+    location: [40.423401, -86.916866],
     address: "901 W Mitch Daniels Blvd, West Lafayette, IN 47907",
     type: "academic",
   },
@@ -288,7 +292,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "Robert E. Heine Pharmacy Building",
     shortName: "RHPH",
     aliases: ["RHPH", "Pharmacy Building", "Heine Pharmacy Building"],
-    location: [40.4294, -86.9150],
+    location: [40.429744, -86.915971],
     address: "575 Stadium Mall Dr, West Lafayette, IN 47907",
     type: "academic",
   },
@@ -296,7 +300,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "Charles J. Lynn Hall of Vet Medicine",
     shortName: "LYNN",
     aliases: ["LYNN", "Lynn Hall of Vet Medicine", "Lynn Hall", "Veterinary Medicine"],
-    location: [40.4199, -86.9171],
+    location: [40.419498, -86.91483],
     address: "625 Harrison St, West Lafayette, IN 47907",
     type: "academic",
   },
@@ -309,7 +313,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
       "AAARCC Vegetable Pop-up",
       "AAARCC Language & Conversation Practice",
     ],
-    location: [40.4292, -86.9103],
+    location: [40.42913, -86.917654],
     address: "915 5th St, West Lafayette, IN 47906",
     type: "cultural_center",
   },
@@ -317,7 +321,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "Black Cultural Center",
     shortName: "BCC",
     aliases: ["BCC", "Black Cultural Center"],
-    location: [40.4294, -86.9197],
+    location: [40.427525, -86.919517],
     address: "1100 3rd St, West Lafayette, IN 47906",
     type: "cultural_center",
   },
@@ -325,7 +329,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "Latino Cultural Center at Purdue",
     shortName: "LCC",
     aliases: ["LCC", "Latino Cultural Center"],
-    location: [40.4287, -86.9105],
+    location: [40.429007, -86.917608],
     address: "426 Waldron St, West Lafayette, IN 47906",
     type: "cultural_center",
   },
@@ -333,7 +337,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "Native American Educational and Cultural Center",
     shortName: "NAECC",
     aliases: ["NAECC", "Native American Educational and Cultural Center"],
-    location: [40.4290, -86.9105],
+    location: [40.429109, -86.916987],
     address: "903 5th St, West Lafayette, IN 47906",
     type: "cultural_center",
   },
@@ -341,7 +345,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "Bechtel Innovation Design Center",
     shortName: "BIDC",
     aliases: ["BIDC", "Bechtel Center", "Bechtel Innovation Design Center"],
-    location: [40.4288, -86.9200],
+    location: [40.427522, -86.918798],
     address: "1090 3rd St, West Lafayette, IN 47906",
     type: "academic",
   },
@@ -349,7 +353,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "Purdue Memorial Mall",
     shortName: "MALL",
     aliases: ["Memorial Mall", "Purdue Memorial Mall", "Purdue Farmers Market"],
-    location: [40.4250, -86.9125],
+    location: [40.425064, -86.914327],
     address: "Memorial Mall Dr, West Lafayette, IN 47907",
     type: "student_center",
   },
@@ -357,7 +361,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "Guy J. Mackey Arena",
     shortName: "MACK",
     aliases: ["MACK", "Mackey Arena", "Mackey"],
-    location: [40.4332, -86.9161],
+    location: [40.433323, -86.916171],
     address: "900 John R Wooden Dr, West Lafayette, IN 47907",
     type: "athletic",
   },
@@ -365,7 +369,7 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     name: "Ross-Ade Stadium",
     shortName: "ROSS",
     aliases: ["ROSS", "Ross-Ade Stadium", "Ross-Ade", "Ross Ade"],
-    location: [40.4352, -86.9187],
+    location: [40.434652, -86.918454],
     address: "850 Steven Beering Dr, West Lafayette, IN 47907",
     type: "athletic",
   },
@@ -378,15 +382,28 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
       "Honors College and Residences",
       "Honors College and Residences South",
     ],
-    location: [40.4275, -86.9215],
+    location: [40.42578, -86.919487],
     address: "1101 1st St, West Lafayette, IN 47906",
+    type: "residence",
+  },
+  {
+    name: "Hillenbrand Hall",
+    shortName: "HILL",
+    aliases: [
+      "HILL",
+      "Hillenbrand",
+      "Hillenbrand Hall",
+      "Hillenbrand Residence Hall",
+    ],
+    location: [40.426695, -86.926698],
+    address: "1301 Third St, West Lafayette, IN 47906",
     type: "residence",
   },
   {
     name: "Seng-Liang Wang Hall",
     shortName: "WANG",
     aliases: ["WANG", "Wang Hall"],
-    location: [40.4296, -86.9105],
+    location: [40.430461, -86.912541],
     address: "516 Northwestern Ave, West Lafayette, IN 47906",
     type: "academic",
   },
@@ -407,14 +424,39 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     type: "academic",
   },
   {
+    name: "Mitchell E. Daniels, Jr. School of Business",
+    shortName: "DSB",
+    aliases: [
+      "DSB",
+      "Mitch Daniels School of Business",
+      "Mitchell E. Daniels Jr. School of Business",
+      "Daniels School of Business",
+      "Daniels School",
+      "Krannert School of Management",
+    ],
+    location: [40.423682, -86.910936],
+    address: "403 W Mitch Daniels Blvd, West Lafayette, IN 47907",
+    type: "academic",
+  },
+  {
+    name: "Honors College and Residences North",
+    shortName: "HCRN",
+    aliases: ["HCRN", "Honors College and Residences North", "Honors North"],
+    location: [40.426777, -86.919743],
+    address: "1101 1st St, West Lafayette, IN 47906",
+    type: "residence",
+  },
+  {
     name: "Engineering and Technology Building - Purdue Indianapolis",
     shortName: "ET-INDY",
     aliases: [
       "Engineering and Technology Building - Purdue Indianapolis",
       "ET 333 - Purdue Indianapolis",
       "ET Building Indianapolis",
+      "ET Building",
+      "ET Atrium",
     ],
-    location: [39.7744, -86.1752],
+    location: [39.774013, -86.172553],
     address: "799 W Michigan St, Indianapolis, IN 46202",
     type: "academic",
   },
@@ -447,8 +489,54 @@ for (const bldg of CANONICAL_CAMPUS_BUILDINGS) {
 }
 
 /**
+ * Vague labels that must never resolve to a coordinate (city/state names, virtual
+ * events, placeholders). Guessing a building for these produces false geo hits.
+ */
+const VAGUE_LOCATION_LABELS = new Set([
+  "west lafayette",
+  "west lafayette ind",
+  "west lafayette indiana",
+  "purdue",
+  "purdue university",
+  "purdue university west lafayette campus",
+  "campus",
+  "tbd",
+  "tba",
+  "to be announced",
+  "to be determined",
+  "virtual",
+  "virtual event",
+  "online",
+  "online event",
+  "zoom",
+  "webinar",
+  "livestream",
+]);
+
+/**
+ * Strips Localist decoration so a venue string can be matched against the directory:
+ * leading emoji / "Starting Point:" style prefixes, a "Purdue University," prefix, and
+ * trailing room numbers ("WALC 1055", "LWSN B155", "Room 1086").
+ */
+function normalizeVenueLookupText(value: string): string {
+  let out = value
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s,.&'()/-]+/gu, " ") // drop emoji and other symbols
+    .replace(/\s+/g, " ")
+    .trim();
+
+  out = out.replace(/^(starting point|meet at|location)\s*:\s*/, "");
+  out = out.replace(/^purdue university\s*[,-]\s*/, "");
+  out = out.replace(/[\s,-]*\b(room|rm|suite|ste)\b\.?\s*[a-z]?\d+[a-z]?\s*$/, "");
+  out = out.replace(/[\s,-]+[a-z]?\d{2,4}[a-z]?\s*$/, ""); // "WALC 1055", "LWSN B155"
+
+  return out.replace(/[\s,.-]+$/, "").trim();
+}
+
+/**
  * Given an event location string (e.g. "Stewart Center, Fowler Hall", "RAWL", "WALC 1055"),
  * resolves and returns the corresponding campus building, coordinates, and canonical name.
+ * Returns undefined for vague labels and anything without a confident match.
  */
 export function resolveVenueCoordinates(
   rawLocation?: string
@@ -458,7 +546,11 @@ export function resolveVenueCoordinates(
   const trimmed = rawLocation.trim();
   if (!trimmed) return undefined;
 
-  const lower = trimmed.toLowerCase();
+  const vagueKey = trimmed.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  if (VAGUE_LOCATION_LABELS.has(vagueKey)) return undefined;
+
+  const lower = normalizeVenueLookupText(trimmed) || trimmed.toLowerCase();
+  if (VAGUE_LOCATION_LABELS.has(lower.replace(/[^a-z0-9]+/g, " ").trim())) return undefined;
 
   // 1. Direct exact lookup
   if (venueLookupMap.has(lower)) {
@@ -484,10 +576,15 @@ export function resolveVenueCoordinates(
     };
   }
 
-  // 3. Match against known aliases contained inside the string
+  // 3. Match against known aliases contained inside the string.
+  // Short building codes must match a whole token ("HAMP" must not match "Champaign").
+  const tokens = new Set(lower.split(/[^a-z0-9]+/).filter(Boolean));
   for (const bldg of CANONICAL_CAMPUS_BUILDINGS) {
     for (const alias of bldg.aliases) {
-      if (alias.length >= 3 && lower.includes(alias.toLowerCase())) {
+      const a = alias.toLowerCase();
+      const isCode = a.length <= 6 && !a.includes(" ");
+      const hit = isCode ? tokens.has(a) : a.length >= 5 && lower.includes(a);
+      if (hit) {
         return {
           name: bldg.name,
           shortName: bldg.shortName,

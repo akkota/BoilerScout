@@ -35,8 +35,7 @@ function baseEvents(): Event[] {
       location: { name: "Burton D. Morgan Center (MRGN) 121", lat: 40.4237, lng: -86.9212 },
       imageUrl:
         "https://images.unsplash.com/photo-1515187029135-18ee286d815b?auto=format&fit=crop&w=600&q=80",
-      url: "https://events.purdue.edu/event/boiler_startup_pitch_night",
-      source: "purdue-events",
+      source: "seed",
       distanceMiles: 0.3,
       reasons: ["Strong meaning match", "Starts soon", "0.3 miles away", "Matches startups"],
     },
@@ -52,8 +51,7 @@ function baseEvents(): Event[] {
       location: { name: "Lawson Computer Science Building (LWSN) B155", lat: 40.4278, lng: -86.917 },
       imageUrl:
         "https://images.unsplash.com/photo-1485827404703-89b55fcc595e?auto=format&fit=crop&w=600&q=80",
-      url: "https://events.purdue.edu/event/ai_ml_tech_talk",
-      source: "purdue-events",
+      source: "seed",
       distanceMiles: 0.2,
       reasons: ["Strong meaning match", "Matches AI", "0.2 miles away"],
     },
@@ -69,8 +67,7 @@ function baseEvents(): Event[] {
       location: { name: "Krach Leadership Center (KRACH) 2nd Floor Lounge", lat: 40.4272, lng: -86.9208 },
       imageUrl:
         "https://images.unsplash.com/photo-1558857563-b371033873b8?auto=format&fit=crop&w=600&q=80",
-      url: "https://events.purdue.edu/event/krach_boba_social",
-      source: "purdue-events",
+      source: "seed",
       distanceMiles: 0.25,
       reasons: ["Starts soon", "Free event", "0.25 miles away"],
     },
@@ -86,8 +83,7 @@ function baseEvents(): Event[] {
       location: { name: "Purdue Memorial Union (PMU) Great Hall", lat: 40.4250, lng: -86.9114 },
       imageUrl:
         "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=600&q=80",
-      url: "https://events.purdue.edu/event/pmu_late_night",
-      source: "purdue-events",
+      source: "seed",
       distanceMiles: 0.6,
       reasons: ["Related by topic", "Free event", "Starts today"],
     },
@@ -103,8 +99,7 @@ function baseEvents(): Event[] {
       location: { name: "Neil Armstrong Hall of Engineering (ARMS) Atrium", lat: 40.4309, lng: -86.9157 },
       imageUrl:
         "https://images.unsplash.com/photo-1517976487502-5f69c5e3f5e5?auto=format&fit=crop&w=600&q=80",
-      url: "https://events.purdue.edu/event/psp_rocket_showcase",
-      source: "purdue-events",
+      source: "seed",
       distanceMiles: 0.5,
       reasons: ["Matches engineering", "Popular campus event"],
     },
