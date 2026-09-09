@@ -9,6 +9,7 @@ import {
 } from "@/lib/typesense/schema";
 import { ensureEventSynonyms } from "@/lib/typesense/synonyms";
 import {
+  createNormalizationReport,
   normalizePurdueEvent,
   RawPurdueEventWrapper,
 } from "@/lib/data/normalizePurdueEvent";
@@ -97,8 +98,10 @@ export async function ingestEvents(): Promise<void> {
   let skippedCount = 0;
   let geocodedCount = 0;
 
+  const report = createNormalizationReport();
+
   for (const raw of rawEvents) {
-    const doc = normalizePurdueEvent(raw);
+    const doc = normalizePurdueEvent(raw, report);
     if (doc) {
       normalizedDocuments.push(doc);
       if (doc.location) geocodedCount++;
@@ -118,6 +121,29 @@ export async function ingestEvents(): Promise<void> {
   console.log(`- Unique events:      ${normalizedCount}`);
   console.log(`- With coordinates:   ${geocodedCount} (${Math.round((geocodedCount / normalizedDocuments.length) * 100)}%)`);
   console.log(`- Skipped:            ${skippedCount}`);
+
+  console.log(`\nCoordinate Quality:`);
+  console.log(`- From Localist geo:  ${report.fromLocalist}`);
+  console.log(`- From venue lookup:  ${report.fromVenueLookup}`);
+  console.log(`- Bad coords fixed:   ${report.correctedCoordinates}`);
+  console.log(`- Without coords:     ${report.missing}`);
+
+  if (report.corrections.length > 0) {
+    console.log(`\nCoordinate corrections (${report.corrections.length}):`);
+    for (const line of report.corrections.slice(0, 20)) {
+      console.log(`  - ${line}`);
+    }
+  }
+
+  const topUnresolved = [...report.unresolvedVenues.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10);
+  if (topUnresolved.length > 0) {
+    console.log(`\nTop unresolved venue names:`);
+    for (const [name, count] of topUnresolved) {
+      console.log(`  ${String(count).padStart(4)}x  ${name}`);
+    }
+  }
 
   // 4. Ensure Typesense collection exists and campus synonyms are applied
   const adminClient = getTypesenseAdminClient();

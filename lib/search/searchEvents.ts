@@ -20,8 +20,10 @@ import { attachDetourMinutes } from "@/lib/search/attachDetourMinutes";
 import { filterCampusEvents } from "@/lib/search/campusScope";
 import {
   analyzeQueryTerms,
+  buildSearchQueryText,
   expandSemanticIntent,
   eventPassesContentRelevance,
+  scoreContentMatch,
   type RelevanceMetadata,
 } from "@/lib/search/contentRelevance";
 import {
@@ -157,15 +159,42 @@ function rankRouteEvents(events: Event[]): Event[] {
 }
 
 /**
- * Normal discovery ranking: preserve Typesense order when content intent exists.
- * Without a topic query, prefer upcoming first.
+ * Normal discovery ranking.
+ * With content intent: strongest topic/category match first, then proximity
+ * (when a geo constraint is active), then Typesense order (stable sort).
+ * Without a topic query: upcoming first, nearest first when geo is active.
  */
-function rankNormalEvents(events: Event[], contentQuery: string): Event[] {
+function rankNormalEvents(
+  events: Event[],
+  contentQuery: string,
+  geoActive: boolean
+): Event[] {
   const now = Date.now();
   const { hasContentIntent } = analyzeQueryTerms(contentQuery);
 
   if (hasContentIntent) {
-    return events;
+    const scores = new Map(
+      events.map((event) => [event.id, scoreContentMatch(event, contentQuery)])
+    );
+    return [...events].sort((a, b) => {
+      const scoreDiff = (scores.get(b.id) ?? 0) - (scores.get(a.id) ?? 0);
+      if (scoreDiff !== 0) return scoreDiff;
+      if (geoActive) {
+        const aDist = a.distanceMiles ?? Number.POSITIVE_INFINITY;
+        const bDist = b.distanceMiles ?? Number.POSITIVE_INFINITY;
+        if (aDist !== bDist) return aDist - bDist;
+      }
+      return 0;
+    });
+  }
+
+  if (geoActive) {
+    return [...events].sort((a, b) => {
+      const aDist = a.distanceMiles ?? Number.POSITIVE_INFINITY;
+      const bDist = b.distanceMiles ?? Number.POSITIVE_INFINITY;
+      if (aDist !== bDist) return aDist - bDist;
+      return a.startsAt - b.startsAt;
+    });
   }
 
   return [...events].sort((a, b) => {
@@ -180,15 +209,36 @@ function rankNormalEvents(events: Event[], contentQuery: string): Event[] {
   });
 }
 
+interface GeoConstraint {
+  center: { lat: number; lng: number };
+  radiusMiles: number;
+}
+
 function finalizeEvents(
   candidates: EventCandidate[],
   routeCorridor: RouteCorridor | null,
   contentQuery: string,
-  limit: number
+  limit: number,
+  geo: GeoConstraint | null
 ): Event[] {
   let next = candidates.filter((candidate) =>
     filterCampusEvents([candidate.event]).length === 1
   );
+
+  // Hard geo constraint: an event without coordinates, or outside the radius,
+  // can never be returned. Typesense already filters, this is the guarantee.
+  if (geo && !routeCorridor) {
+    next = next.filter(({ event }) => {
+      if (!hasUsableCoordinates(event)) return false;
+      const miles = calculateDistanceMiles(
+        geo.center.lat,
+        geo.center.lng,
+        event.location!.lat!,
+        event.location!.lng!
+      );
+      return miles <= geo.radiusMiles;
+    });
+  }
 
   if (routeCorridor) {
     // RouteScout: coordinates required; re-check corridor membership.
@@ -211,7 +261,7 @@ function finalizeEvents(
   if (routeCorridor) {
     return rankRouteEvents(events).slice(0, limit);
   } else {
-    return rankNormalEvents(events, contentQuery).slice(0, limit);
+    return rankNormalEvents(events, contentQuery, Boolean(geo)).slice(0, limit);
   }
 }
 
@@ -249,8 +299,32 @@ function routeScoutResponse(
 export async function searchEvents(request: SearchRequest): Promise<SearchResponse> {
   const startTime = Date.now();
   const prepared = await prepareSearchRequest(request);
+
+  if (prepared.routeError) {
+    return {
+      events: [],
+      found: 0,
+      tookMs: Date.now() - startTime,
+      routeError: prepared.routeError,
+    };
+  }
+
+  // An unresolvable "near <place>" is surfaced, never silently ignored.
+  if (prepared.locationError) {
+    return {
+      events: [],
+      found: 0,
+      tookMs: Date.now() - startTime,
+      locationError: prepared.locationError,
+    };
+  }
+
   const activeRequest = prepared.request;
-  const rawQuery = expandSemanticIntent(activeRequest.query?.trim() || "");
+  // Strip filler ("events about … or …") so keyword + vector search see topics only.
+  const rawQuery = buildSearchQueryText(
+    expandSemanticIntent(activeRequest.query?.trim() || "")
+  );
+  const nearPlace = prepared.nearPlace;
   const routeScoutActive = prepared.routeScoutActive;
   const resultLimit = routeScoutActive ? ROUTE_EVENT_LIMIT : NORMAL_EVENT_LIMIT;
 
@@ -281,6 +355,14 @@ export async function searchEvents(request: SearchRequest): Promise<SearchRespon
       activeRequest.filters?.radiusMiles !== undefined &&
       activeRequest.filters.radiusMiles > 0;
 
+    const geoConstraint: GeoConstraint | null =
+      hasGeoFilter && activeRequest.filters?.center && activeRequest.filters?.radiusMiles
+        ? {
+            center: activeRequest.filters.center,
+            radiusMiles: activeRequest.filters.radiusMiles,
+          }
+        : null;
+
     if (routeCorridor) {
       filterConditions.push(routeCorridor.filterBy);
     } else if (
@@ -310,8 +392,13 @@ export async function searchEvents(request: SearchRequest): Promise<SearchRespon
     const filterBy =
       filterConditions.length > 0 ? filterConditions.join(" && ") : undefined;
 
-    // Fetch a modest candidate pool, then rank + slice to the UI limit.
-    const candidatePages = Math.min(30, Math.max(resultLimit * 3, 20));
+    // Fetch a candidate pool, then rank + slice to the UI limit. A hard geo /
+    // corridor filter already bounds the set, so pull deeper there: the topic
+    // gate would otherwise starve on the first 30 hybrid hits.
+    const candidatePages =
+      geoConstraint || routeCorridor
+        ? 100
+        : Math.min(30, Math.max(resultLimit * 3, 20));
 
     let searchParams: SearchParams<TypesenseEventDocument>;
 
@@ -378,7 +465,13 @@ export async function searchEvents(request: SearchRequest): Promise<SearchRespon
       }));
     }
 
-    const limited = finalizeEvents(candidates, routeCorridor, rawQuery, resultLimit);
+    const limited = finalizeEvents(
+      candidates,
+      routeCorridor,
+      rawQuery,
+      resultLimit,
+      geoConstraint
+    );
     const tookMs = Date.now() - startTime;
 
     return {
@@ -386,6 +479,7 @@ export async function searchEvents(request: SearchRequest): Promise<SearchRespon
       found: limited.length,
       tookMs,
       ...(routeScout ? { routeScout } : {}),
+      ...(nearPlace ? { nearPlace } : {}),
     };
   } catch (error) {
     console.error("Typesense search error, falling back to cached events:", error);
@@ -470,7 +564,14 @@ export async function searchEvents(request: SearchRequest): Promise<SearchRespon
       fallback.map((event) => ({ event })),
       routeCorridor,
       rawQuery,
-      resultLimit
+      resultLimit,
+      center &&
+      typeof center.lat === "number" &&
+      typeof center.lng === "number" &&
+      radiusMiles !== undefined &&
+      radiusMiles > 0
+        ? { center, radiusMiles }
+        : null
     );
     const tookMs = Date.now() - startTime;
 
@@ -479,6 +580,7 @@ export async function searchEvents(request: SearchRequest): Promise<SearchRespon
       found: limited.length,
       tookMs,
       ...(routeScout ? { routeScout } : {}),
+      ...(nearPlace ? { nearPlace } : {}),
     };
   }
 }

@@ -1,8 +1,17 @@
 import { fetchWalkingRoutePoints } from "@/lib/mapbox/fetchWalkingRoute";
+import { NEAR_RADIUS_MILES, parseNearIntent } from "@/lib/search/parseNearIntent";
 import { parseRouteIntent } from "@/lib/search/parseRouteIntent";
 import { parseTimeWords } from "@/lib/search/parseTimeWords";
-import { resolveCampusPlace } from "@/lib/search/resolveCampusPlace";
-import type { RouteOptions, SearchFilters, SearchRequest } from "@/types/search";
+import {
+  resolveCampusPlaceAsync,
+  resolveNearPlaceTail,
+} from "@/lib/search/resolveCampusPlace";
+import type {
+  NearPlace,
+  RouteOptions,
+  SearchFilters,
+  SearchRequest,
+} from "@/types/search";
 
 /** Default corridor width for campus walking RouteScout. */
 export const DEFAULT_CORRIDOR_METERS = 220;
@@ -16,6 +25,12 @@ export interface PreparedSearchRequest {
   routeScoutActive: boolean;
   originName?: string;
   destinationName?: string;
+  /** Set when route intent was detected but places couldn't be resolved. */
+  routeError?: string;
+  /** Resolved NL "near <place>" constraint, applied as a hard geo filter. */
+  nearPlace?: NearPlace;
+  /** Set when "near <place>" was detected but the place couldn't be resolved. */
+  locationError?: string;
 }
 
 function mergeTimeFilters(
@@ -44,7 +59,8 @@ function mergeTimeFilters(
  * windows, and strip route/time phrasing out of the Typesense query text.
  *
  * If the client already sent `route.points`, that wins and NL route parse is skipped.
- * If NL parse fails to resolve places, falls back to a normal (non-route) search.
+ * If NL parse detects a route but cannot resolve places, returns routeError
+ * instead of silently falling back to normal search.
  */
 export async function prepareSearchRequest(
   input: SearchRequest
@@ -81,41 +97,88 @@ export async function prepareSearchRequest(
   const parsed = parseRouteIntent(input.query ?? "");
   if (!parsed.isRouteQuery || !parsed.originName || !parsed.destinationName) {
     const timed = parseTimeWords(input.query ?? "");
+    const timedFilters = mergeTimeFilters(
+      input.filters,
+      timed.startAfter,
+      timed.startBefore
+    );
+
+    const near = parseNearIntent(timed.contentQuery);
+    if (!near.isNearQuery || !near.placeTail) {
+      return {
+        request: { ...input, query: timed.contentQuery, filters: timedFilters },
+        routeScoutActive: false,
+      };
+    }
+
+    const resolved = await resolveNearPlaceTail(near.placeTail);
+    if (!resolved) {
+      // Never silently drop an explicit location constraint.
+      console.warn('Near-place unresolved:', near.placeTail);
+      return {
+        request: { ...input, query: "", filters: timedFilters },
+        routeScoutActive: false,
+        locationError: `Could not find "${near.placeTail}" on or near campus. Try a building name like "Lawson" or "Purdue Memorial Union".`,
+      };
+    }
+
+    // Explicit "near <place>" text wins over the UI center; the UI radius,
+    // when the user set one, still controls how wide the circle is.
+    const radiusMiles =
+      input.filters?.radiusMiles !== undefined && input.filters.radiusMiles > 0
+        ? input.filters.radiusMiles
+        : NEAR_RADIUS_MILES;
+
+    const contentQuery = [near.contentQuery, resolved.leftover]
+      .filter((part) => part.trim().length > 0)
+      .join(" ")
+      .trim();
+
     return {
       request: {
         ...input,
-        query: timed.contentQuery,
-        filters: mergeTimeFilters(
-          input.filters,
-          timed.startAfter,
-          timed.startBefore
-        ),
+        query: contentQuery,
+        filters: {
+          ...(timedFilters ?? {}),
+          center: { lat: resolved.place.lat, lng: resolved.place.lng },
+          radiusMiles,
+        },
       },
       routeScoutActive: false,
+      nearPlace: {
+        name: resolved.place.name,
+        lat: resolved.place.lat,
+        lng: resolved.place.lng,
+        radiusMiles,
+      },
     };
   }
 
-  const origin = resolveCampusPlace(parsed.originName);
-  const destination = resolveCampusPlace(parsed.destinationName);
+  // Try local dictionaries first (sync), then Mapbox geocoding (async)
+  const [origin, destination] = await Promise.all([
+    resolveCampusPlaceAsync(parsed.originName),
+    resolveCampusPlaceAsync(parsed.destinationName),
+  ]);
+
   if (!origin || !destination) {
+    const unresolved: string[] = [];
+    if (!origin) unresolved.push(`"${parsed.originName}"`);
+    if (!destination) unresolved.push(`"${parsed.destinationName}"`);
+
     console.warn(
       "RouteScout places unresolved:",
       parsed.originName,
       "→",
       parsed.destinationName
     );
-    const timed = parseTimeWords(input.query ?? "");
+
     return {
       request: {
         ...input,
-        query: timed.contentQuery,
-        filters: mergeTimeFilters(
-          input.filters,
-          timed.startAfter,
-          timed.startBefore
-        ),
+        query: "",
       },
       routeScoutActive: false,
+      routeError: `Could not find ${unresolved.join(" or ")}. Try a more specific location name.`,
     };
   }
 
@@ -124,10 +187,6 @@ export async function prepareSearchRequest(
     { lat: destination.lat, lng: destination.lng }
   );
 
-  // Time words may appear before the route clause ("AI tonight while walking…").
-  // A pure RouteScout request intentionally has no content query. Do not put
-  // the full natural-language route sentence back into Typesense: the empty
-  // query below becomes browse-style `q: "*"` constrained by the corridor.
   const timed = parseTimeWords(parsed.contentQuery.trim());
 
   return {

@@ -5,9 +5,53 @@ export const SEMANTIC_ADMISSION_DISTANCE = 0.6;
 
 const TERM_EXPANSIONS: Record<string, string[]> = {
   ai: ["ai", "artificial intelligence", "machine learning", "ml", "data science"],
+  social: [
+    "social",
+    "socials",
+    "networking",
+    "mixer",
+    "meetup",
+    "meet and greet",
+    "reception",
+    "hangout",
+    "game night",
+    "trivia night",
+    "social hour",
+    "cookout",
+    "block party",
+  ],
+  entrepreneurship: [
+    "entrepreneur",
+    "entrepreneurship",
+    "startup",
+    "startups",
+    "founder",
+    "venture",
+    "pitch",
+    "innovation",
+  ],
+  networking: ["networking", "network", "mixer", "social", "meetup", "career fair"],
   ml: ["ml", "machine learning", "ai"],
-  startup: ["startup", "startups", "entrepreneur", "entrepreneurship", "founder"],
-  startups: ["startup", "startups", "entrepreneur", "entrepreneurship", "founder"],
+  startup: [
+    "startup",
+    "startups",
+    "entrepreneur",
+    "entrepreneurship",
+    "founder",
+    "venture",
+    "pitch",
+    "innovation",
+  ],
+  startups: [
+    "startup",
+    "startups",
+    "entrepreneur",
+    "entrepreneurship",
+    "founder",
+    "venture",
+    "pitch",
+    "innovation",
+  ],
   hackathon: ["hackathon", "hackathons", "hacking", "hack"],
   cs: ["cs", "computer science"],
   food: ["food", "lunch", "dinner", "boba", "snack", "refreshments", "luncheon"],
@@ -15,11 +59,6 @@ const TERM_EXPANSIONS: Record<string, string[]> = {
   robotics: ["robotics", "robot", "autonomous", "automation", "drone"],
 };
 
-const PHRASE_EXPANSIONS: Record<string, string[]> = {
-  "computer science": ["computer science", "cs"],
-  "artificial intelligence": ["artificial intelligence", "ai"],
-  "machine learning": ["machine learning", "ml", "ai"],
-};
 
 const TYPO_VOCABULARY = Array.from(
   new Set([
@@ -42,8 +81,24 @@ const FORMAT_TERMS = new Set([
 const STOPWORDS = new Set([
   "a", "an", "the", "and", "or", "of", "for", "to", "in", "on", "at",
   "with", "events", "event", "today", "tonight", "evening", "this", "week",
-  "near", "me",
+  "near", "nearby", "around", "close", "next", "beside", "me", "about",
+  "any", "some", "find", "show", "search", "looking", "want", "get",
+  "something", "anything", "stuff", "happening", "going", "there", "here",
 ]);
+
+/** Joins the previous topic into the same OR-group ("startups or AI"). */
+const OR_TOKENS = new Set(["or", "either"]);
+
+/**
+ * Multi-word topics collapsed to a single token so OR/AND grouping stays
+ * token-aligned. The collapsed token must exist in TERM_EXPANSIONS.
+ */
+const PHRASE_COLLAPSES: [RegExp, string][] = [
+  [/\bartificial intelligence\b/g, "ai"],
+  [/\bmachine learning\b/g, "ml"],
+  [/\bcomputer science\b/g, "cs"],
+  [/\bdata science\b/g, "ai"],
+];
 
 /** These terms describe a semantic intent, but are too generic to be lexical gates. */
 const GENERIC_INTENT_TERMS = new Set([
@@ -58,7 +113,19 @@ function tokenize(query: string): string[] {
     .filter((term) => term.length > 1);
 }
 
+/**
+ * Terms whose plain substring match produces false positives.
+ * "social" must not fire on "social sciences" / "social media" / "social work".
+ */
+const TERM_MATCHERS: Record<string, RegExp> = {
+  social:
+    /\bsocials?\b(?!\s*(?:science|sciences|scientist|work|worker|media|security|studies|justice|policy))/i,
+};
+
 function termMatchesHay(term: string, hay: string): boolean {
+  const matcher = TERM_MATCHERS[term];
+  if (matcher) return matcher.test(hay);
+
   if (term.length <= 2) {
     return new RegExp(
       `\\b${term.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}\\b`,
@@ -132,40 +199,82 @@ export function expandSemanticIntent(query: string): string {
 
 export interface QueryTermBuckets {
   topicTerms: string[];
+  /**
+   * Topic terms grouped by boolean intent: groups are AND-ed, terms inside a
+   * group are OR-ed. "social events about startups or AI" yields
+   * [[social…], [startup…, ai…]] → social AND (startup OR AI).
+   */
+  topicGroups: string[][];
   formatTerms: string[];
   hasTopicTerms: boolean;
   hasContentIntent: boolean;
 }
 
-/** Split content into phrase-aware topic, format, and semantic-only intent. */
+/** Collapse multi-word topics to one token so OR/AND grouping stays aligned. */
+function collapsePhrases(normalized: string): string {
+  let out = ` ${normalized} `;
+  for (const [pattern, token] of PHRASE_COLLAPSES) {
+    out = out.replace(pattern, token);
+  }
+  return out.trim();
+}
+
+/** Split content into AND/OR topic groups, format terms, and general intent. */
 export function analyzeQueryTerms(query: string): QueryTermBuckets {
-  const normalized = normalizeContentQuery(query);
+  const normalized = collapsePhrases(normalizeContentQuery(query));
   const topicTerms = new Set<string>();
   const formatTerms = new Set<string>();
-  let remaining = normalized;
+  const topicGroups: string[][] = [];
+  let contentTokenCount = 0;
+  let joinPrevious = false;
 
-  for (const [phrase, expansions] of Object.entries(PHRASE_EXPANSIONS)) {
-    if (remaining.includes(phrase)) {
-      expansions.forEach((term) => topicTerms.add(term));
-      remaining = remaining.replaceAll(phrase, " ");
+  for (const token of tokenize(normalized)) {
+    if (OR_TOKENS.has(token)) {
+      joinPrevious = topicGroups.length > 0;
+      continue;
     }
-  }
+    if (STOPWORDS.has(token)) continue;
 
-  const contentTokens = tokenize(remaining).filter((term) => !STOPWORDS.has(term));
-  for (const token of contentTokens) {
+    contentTokenCount++;
+
     if (FORMAT_TERMS.has(token)) {
       formatTerms.add(token);
-    } else if (!GENERIC_INTENT_TERMS.has(token)) {
-      (TERM_EXPANSIONS[token] ?? [token]).forEach((term) => topicTerms.add(term));
+      continue;
     }
+    if (GENERIC_INTENT_TERMS.has(token)) continue;
+
+    const expansions = TERM_EXPANSIONS[token] ?? [token];
+    expansions.forEach((term) => topicTerms.add(term));
+
+    if (joinPrevious) {
+      topicGroups[topicGroups.length - 1].push(...expansions);
+    } else {
+      topicGroups.push([...expansions]);
+    }
+    joinPrevious = false;
   }
 
   return {
     topicTerms: Array.from(topicTerms),
+    topicGroups: topicGroups.map((group) => Array.from(new Set(group))),
     formatTerms: Array.from(formatTerms),
-    hasTopicTerms: topicTerms.size > 0,
-    hasContentIntent: contentTokens.length > 0 || topicTerms.size > 0 || formatTerms.size > 0,
+    hasTopicTerms: topicGroups.length > 0,
+    hasContentIntent:
+      contentTokenCount > 0 || topicGroups.length > 0 || formatTerms.size > 0,
   };
+}
+
+/**
+ * The text actually sent to Typesense: original wording minus filler, so the
+ * embedding and keyword sides both see topic words only ("social startups ai")
+ * instead of "social events about startups or AI near Lawson".
+ */
+export function buildSearchQueryText(query: string): string {
+  const normalized = collapsePhrases(normalizeContentQuery(query));
+  const kept = tokenize(normalized).filter(
+    (token) => !STOPWORDS.has(token) && !OR_TOKENS.has(token)
+  );
+  return kept.length > 0 ? kept.join(" ") : "";
 }
 
 function searchableText(event: Event): string {
@@ -182,12 +291,50 @@ function searchableText(event: Event): string {
     .toLowerCase();
 }
 
+function categoryText(event: Event): string {
+  return (event.categories ?? []).join(" ").toLowerCase();
+}
+
 /** True when an event has direct lexical evidence for the content query. */
 export function eventMatchesContentQuery(event: Event, query: string): boolean {
-  const { topicTerms, formatTerms, hasTopicTerms } = analyzeQueryTerms(query);
+  const { topicGroups, formatTerms, hasTopicTerms } = analyzeQueryTerms(query);
   const hay = searchableText(event);
-  if (hasTopicTerms) return topicTerms.some((term) => termMatchesHay(term, hay));
+  if (hasTopicTerms) {
+    // Every AND-group must be satisfied by at least one of its OR-terms.
+    return topicGroups.every((group) =>
+      group.some((term) => termMatchesHay(term, hay))
+    );
+  }
   return formatTerms.some((term) => termMatchesHay(term, hay));
+}
+
+/**
+ * Ranking signal: how strongly an event matches the content intent.
+ * Category hits count double — a Localist "Entrepreneurship" tag is stronger
+ * evidence than the same word buried in a description.
+ */
+export function scoreContentMatch(event: Event, query: string): number {
+  const { topicGroups, formatTerms } = analyzeQueryTerms(query);
+  if (topicGroups.length === 0 && formatTerms.length === 0) return 0;
+
+  const hay = searchableText(event);
+  const categories = categoryText(event);
+  const title = (event.title ?? "").toLowerCase();
+  let score = 0;
+
+  for (const group of topicGroups) {
+    const matched = group.filter((term) => termMatchesHay(term, hay));
+    if (matched.length === 0) continue;
+    score += 2;
+    if (matched.some((term) => termMatchesHay(term, categories))) score += 2;
+    if (matched.some((term) => termMatchesHay(term, title))) score += 1;
+  }
+
+  for (const term of formatTerms) {
+    if (termMatchesHay(term, hay)) score += 1;
+  }
+
+  return score;
 }
 
 export interface RelevanceMetadata {
@@ -195,13 +342,34 @@ export interface RelevanceMetadata {
   vectorDistance?: number;
 }
 
-/** Admit lexical/typo evidence or a strong semantic hit; browse queries are unrestricted. */
+/**
+ * Content gate.
+ *
+ * - Browse queries (no text) are unrestricted.
+ * - Multi-topic queries ("social … startups or AI") require every AND-group to
+ *   have lexical evidence: weak semantic similarity may not fill the list.
+ * - Single-topic queries also admit a strong semantic hit, so "AI" can still
+ *   surface a "Machine Intelligence" talk that uses none of the query words.
+ */
 export function eventPassesContentRelevance(
   event: Event,
   query: string,
   metadata?: RelevanceMetadata
 ): boolean {
   if (!query.trim()) return true;
+
+  const { topicGroups } = analyzeQueryTerms(query);
+
+  if (topicGroups.length > 0) {
+    if (eventMatchesContentQuery(event, query)) return true;
+    if (topicGroups.length > 1) return false;
+    return (
+      typeof metadata?.vectorDistance === "number" &&
+      metadata.vectorDistance <= SEMANTIC_ADMISSION_DISTANCE
+    );
+  }
+
+  // Format-only / generic intent: keyword evidence or a strong semantic hit.
   if (typeof metadata?.textMatch === "number" && metadata.textMatch > 0) return true;
   if (eventMatchesContentQuery(event, query)) return true;
   return (

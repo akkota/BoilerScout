@@ -20,7 +20,7 @@ import {
 import { parseRouteIntent } from "@/lib/search/parseRouteIntent";
 import type { DiscoverOrganization, DiscoverVenue } from "@/types/discover";
 import { Event } from "@/types/event";
-import type { RouteScoutResponse } from "@/types/search";
+import type { NearPlace, RouteScoutResponse } from "@/types/search";
 
 // Leaflet + CSS tiles — keep the map off the critical path so search is
 // interactive immediately. SSR is off because Leaflet touches `window`.
@@ -56,6 +56,9 @@ export default function Home() {
 
   const [events, setEvents] = useState<Event[]>([]);
   const [routeScout, setRouteScout] = useState<RouteScoutResponse | undefined>();
+  const [routeError, setRouteError] = useState<string | undefined>();
+  const [nearPlace, setNearPlace] = useState<NearPlace | undefined>();
+  const [locationError, setLocationError] = useState<string | undefined>();
   const [mockMode, setMockMode] = useState(false);
   const [organizations, setOrganizations] = useState<DiscoverOrganization[]>([]);
   const [venues, setVenues] = useState<DiscoverVenue[]>([]);
@@ -124,6 +127,9 @@ export default function Home() {
 
       setEvents(response.events);
       setRouteScout(response.routeScout);
+      setRouteError(response.routeError);
+      setNearPlace(response.nearPlace);
+      setLocationError(response.locationError);
       setTookMs(response.tookMs);
       setOrganizations(
         discover?.groups.organizations.status === "ok"
@@ -152,6 +158,9 @@ export default function Home() {
       setError(err instanceof Error ? err.message : "Failed to load events");
       setEvents([]);
       setRouteScout(undefined);
+      setRouteError(undefined);
+      setNearPlace(undefined);
+      setLocationError(undefined);
       setOrganizations([]);
       setVenues([]);
       setTookMs(null);
@@ -240,6 +249,7 @@ export default function Home() {
           onHoverEvent={setHoveredEventId}
           userLocation={filters.nearMe ? (filters.center ?? CAMPUS_CENTER) : undefined}
           routeScout={routeScout}
+          nearPlace={nearPlace}
         />
       </section>
 
@@ -254,9 +264,16 @@ export default function Home() {
 
       {/* Results header */}
       <section className="flex items-center justify-between gap-3 pt-2">
-        <h2 className="text-xl font-bold">
-          {query ? `Results for "${query}"` : "Upcoming Events"}
-        </h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-xl font-bold">
+            {query ? `Results for "${query}"` : "Upcoming Events"}
+          </h2>
+          {nearPlace && (
+            <span className="px-2 py-0.5 rounded-full bg-teal-100 dark:bg-teal-950 text-teal-900 dark:text-teal-100 text-[11px] font-semibold">
+              📍 within {nearPlace.radiusMiles} mi of {nearPlace.name}
+            </span>
+          )}
+        </div>
         <div
           className="text-xs text-stone-500 dark:text-stone-400 text-right"
           aria-live="polite"
@@ -294,6 +311,34 @@ export default function Home() {
           >
             Retry
           </button>
+        </div>
+      )}
+
+      {/* "near <place>" resolution error */}
+      {locationError && !isLoading && (
+        <div
+          role="alert"
+          className="p-4 rounded-lg bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-900 text-amber-800 dark:text-amber-200 text-sm flex items-start gap-3"
+        >
+          <span className="text-lg shrink-0">📍</span>
+          <div>
+            <p className="font-semibold">Couldn&apos;t resolve that location</p>
+            <p className="mt-1 text-amber-700 dark:text-amber-300">{locationError}</p>
+          </div>
+        </div>
+      )}
+
+      {/* RouteScout resolution error */}
+      {routeError && !isLoading && (
+        <div
+          role="alert"
+          className="p-4 rounded-lg bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-900 text-amber-800 dark:text-amber-200 text-sm flex items-start gap-3"
+        >
+          <span className="text-lg shrink-0">🗺️</span>
+          <div>
+            <p className="font-semibold">RouteScout could not plan this route</p>
+            <p className="mt-1 text-amber-700 dark:text-amber-300">{routeError}</p>
+          </div>
         </div>
       )}
 

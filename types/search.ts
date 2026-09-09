@@ -35,6 +35,14 @@ export interface SearchRequest {
   route?: RouteOptions;
 }
 
+/** Resolved NL "near <place>" constraint, echoed back so the UI can show/center it. */
+export interface NearPlace {
+  name: string;
+  lat: number;
+  lng: number;
+  radiusMiles: number;
+}
+
 /** Resolved RouteScout geometry returned only for an active route search. */
 export interface RouteScoutResponse {
   points: RouteOptions["points"];
@@ -49,4 +57,10 @@ export interface SearchResponse {
   tookMs: number;
   /** Optional, backward-compatible metadata for rendering the walking route. */
   routeScout?: RouteScoutResponse;
+  /** Set when a route query was detected but origin/destination could not be resolved. */
+  routeError?: string;
+  /** Set when an NL "near <place>" constraint was resolved and applied. */
+  nearPlace?: NearPlace;
+  /** Set when "near <place>" was detected but the place could not be resolved. */
+  locationError?: string;
 }
