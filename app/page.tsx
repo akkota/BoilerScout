@@ -6,7 +6,9 @@ import SearchBar from "@/components/SearchBar";
 import ExampleQueries from "@/components/ExampleQueries";
 import FilterBar from "@/components/FilterBar";
 import EventList from "@/components/EventList";
+import { discoverCampus } from "@/lib/api/discover";
 import { searchEvents } from "@/lib/api/search";
+import DiscoverGroups from "@/components/DiscoverGroups";
 import {
   CAMPUS_CENTER,
   DEFAULT_CATEGORIES,
@@ -15,6 +17,7 @@ import {
   buildSearchFilters,
   countActiveFilters,
 } from "@/lib/filters";
+import type { DiscoverOrganization, DiscoverVenue } from "@/types/discover";
 import { Event } from "@/types/event";
 
 // Leaflet + CSS tiles — keep the map off the critical path so search is
@@ -50,6 +53,8 @@ export default function Home() {
   const [ready, setReady] = useState(false);
 
   const [events, setEvents] = useState<Event[]>([]);
+  const [organizations, setOrganizations] = useState<DiscoverOrganization[]>([]);
+  const [venues, setVenues] = useState<DiscoverVenue[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tookMs, setTookMs] = useState<number | null>(null);
@@ -83,15 +88,40 @@ export default function Home() {
     setIsLoading(true);
     setError(null);
 
+    const trimmed = q.trim();
+
     try {
-      const response = await searchEvents({
+      // Events stay on /api/search (filters + RouteScout). Federated orgs/venues
+      // come from /api/discover only when there is a text query.
+      const searchPromise = searchEvents({
         query: q,
         filters: buildSearchFilters(f),
       });
+      const discoverPromise = trimmed
+        ? discoverCampus({ query: trimmed, limitPerType: 6 }).catch((err) => {
+            console.error("Discover failed:", err);
+            return null;
+          })
+        : Promise.resolve(null);
+
+      const [response, discover] = await Promise.all([
+        searchPromise,
+        discoverPromise,
+      ]);
       if (requestId !== requestIdRef.current) return;
 
       setEvents(response.events);
       setTookMs(response.tookMs);
+      setOrganizations(
+        discover?.groups.organizations.status === "ok"
+          ? discover.groups.organizations.items
+          : []
+      );
+      setVenues(
+        discover?.groups.venues.status === "ok"
+          ? discover.groups.venues.items
+          : []
+      );
       setSelectedEventId((id) =>
         id && response.events.some((e) => e.id === id) ? id : undefined
       );
@@ -108,6 +138,8 @@ export default function Home() {
       console.error("Search failed:", err);
       setError(err instanceof Error ? err.message : "Failed to load events");
       setEvents([]);
+      setOrganizations([]);
+      setVenues([]);
       setTookMs(null);
       setSelectedEventId(undefined);
       setHoveredEventId(undefined);
@@ -208,8 +240,14 @@ export default function Home() {
           {isLoading
             ? "Searching…"
             : hasSearched && !error
-              ? `${events.length} event${events.length === 1 ? "" : "s"} found` +
-                (tookMs !== null ? ` in ${tookMs} ms` : "") +
+              ? `${events.length} event${events.length === 1 ? "" : "s"}` +
+                (organizations.length
+                  ? ` · ${organizations.length} org${organizations.length === 1 ? "" : "s"}`
+                  : "") +
+                (venues.length
+                  ? ` · ${venues.length} venue${venues.length === 1 ? "" : "s"}`
+                  : "") +
+                (tookMs !== null ? ` · ${tookMs} ms` : "") +
                 (activeFilterCount > 0
                   ? ` · ${activeFilterCount} filter${activeFilterCount === 1 ? "" : "s"}`
                   : "")
@@ -234,19 +272,33 @@ export default function Home() {
         </div>
       )}
 
-      {/* Results */}
-      <section>
-        <EventList
-          events={events}
+      {/* Grouped discovery: Events (filtered) + Organizations + Venues */}
+      <section className="space-y-8">
+        <div className="space-y-3">
+          {(query.trim() || events.length > 0 || isLoading) && (
+            <h2 className="text-sm font-bold tracking-[0.14em] uppercase text-stone-500 dark:text-stone-400">
+              Events
+            </h2>
+          )}
+          <EventList
+            events={events}
+            isLoading={isLoading}
+            query={query}
+            hasError={Boolean(error)}
+            hasActiveFilters={activeFilterCount > 0}
+            onClearFilters={() => setFilters({ ...DEFAULT_FILTER_STATE })}
+            selectedEventId={selectedEventId}
+            hoveredEventId={hoveredEventId}
+            onSelectEvent={setSelectedEventId}
+            onHoverEvent={setHoveredEventId}
+          />
+        </div>
+
+        <DiscoverGroups
+          organizations={organizations}
+          venues={venues}
           isLoading={isLoading}
           query={query}
-          hasError={Boolean(error)}
-          hasActiveFilters={activeFilterCount > 0}
-          onClearFilters={() => setFilters({ ...DEFAULT_FILTER_STATE })}
-          selectedEventId={selectedEventId}
-          hoveredEventId={hoveredEventId}
-          onSelectEvent={setSelectedEventId}
-          onHoverEvent={setHoveredEventId}
         />
       </section>
     </main>

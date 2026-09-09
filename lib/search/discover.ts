@@ -1,4 +1,5 @@
 import { mockEvents } from "@/lib/data/mockEvents";
+import { filterCampusEvents } from "@/lib/search/campusScope";
 import { mapTypesenseDocToEvent } from "@/lib/search/searchEvents";
 import { getTypesenseSearchClient } from "@/lib/typesense/client";
 import {
@@ -291,7 +292,7 @@ async function searchCollection(
 
 function cachedEvents(query: string, limit: number): DiscoverGroup<DiscoverEvent> {
   const normalizedQuery = query.toLowerCase();
-  const items = mockEvents
+  const items = filterCampusEvents(mockEvents)
     .filter((event) => {
       const searchableText = [
         event.title,
@@ -358,7 +359,7 @@ export async function discover(
     }),
     searchCollection(VENUES_COLLECTION_NAME, {
       q: query,
-      query_by: "name,description,address,embedding",
+      query_by: "name,short_name,aliases,address,type,embedding",
       num_typos: 2,
       drop_tokens_threshold: 0,
       per_page: limit,
@@ -371,15 +372,40 @@ export async function discover(
   );
   if (events.status !== "ok") {
     events = cachedEvents(query, limit);
+  } else {
+    const campusItems = filterCampusEvents(events.items);
+    events = {
+      ...events,
+      items: campusItems,
+      found: campusItems.length,
+    };
   }
 
   const organizations = normalizeGroup(
     organizationsResult,
     (document, hit) => normalizeOrganization(document, hit, query)
   );
+  // Keep campus orgs; Localist also indexes Indianapolis units.
+  if (organizations.status === "ok") {
+    const campusOrgs = organizations.items.filter((org) => {
+      const text = `${org.name} ${org.description}`;
+      return !/\bindianapolis\b/i.test(text) && !/\bindy\b/i.test(text);
+    });
+    organizations.items = campusOrgs;
+    organizations.found = campusOrgs.length;
+  }
+
   const venues = normalizeGroup(venuesResult, (document, hit) =>
     normalizeVenue(document, hit, query)
   );
+  if (venues.status === "ok") {
+    const campusVenues = venues.items.filter((venue) => {
+      const text = `${venue.name} ${venue.address ?? ""}`;
+      return !/\bindianapolis\b/i.test(text) && !/\bindy\b/i.test(text);
+    });
+    venues.items = campusVenues;
+    venues.found = campusVenues.length;
+  }
 
   const groups = { events, organizations, venues };
   return {

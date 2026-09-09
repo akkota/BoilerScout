@@ -16,6 +16,7 @@ import {
   isPointInRouteCorridor,
 } from "@/lib/search/buildRouteCorridor";
 import { attachDetourMinutes } from "@/lib/search/attachDetourMinutes";
+import { filterCampusEvents } from "@/lib/search/campusScope";
 import type { SearchParams } from "typesense/lib/Typesense/Documents";
 
 export { type TypesenseHitMeta, type SearchHighlight };
@@ -229,6 +230,9 @@ export async function searchEvents(request: SearchRequest): Promise<SearchRespon
       )
     );
 
+    // Keep West Lafayette / nearby campus results; drop Indy, away games, out of state.
+    events = filterCampusEvents(events);
+
     if (routeCorridor && request.route) {
       events = await attachDetourMinutes(events, request.route);
     }
@@ -237,7 +241,7 @@ export async function searchEvents(request: SearchRequest): Promise<SearchRespon
 
     return {
       events,
-      found: result.found ?? events.length,
+      found: events.length,
       tookMs,
     };
   } catch (error) {
@@ -340,6 +344,8 @@ export async function searchEvents(request: SearchRequest): Promise<SearchRespon
     if (routeCorridor && request.route) {
       fallback = await attachDetourMinutes(fallback, request.route);
     }
+
+    fallback = filterCampusEvents(fallback);
 
     const tookMs = Date.now() - startTime;
 
