@@ -383,6 +383,19 @@ export const CANONICAL_CAMPUS_BUILDINGS: CampusBuildingDefinition[] = [
     type: "residence",
   },
   {
+    name: "Hillenbrand Hall",
+    shortName: "HILL",
+    aliases: [
+      "HILL",
+      "Hillenbrand",
+      "Hillenbrand Hall",
+      "Hillenbrand Residence Hall",
+    ],
+    location: [40.4267, -86.9267],
+    address: "1301 Third St, West Lafayette, IN 47906",
+    type: "residence",
+  },
+  {
     name: "Seng-Liang Wang Hall",
     shortName: "WANG",
     aliases: ["WANG", "Wang Hall"],

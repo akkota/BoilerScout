@@ -35,8 +35,18 @@ export interface SearchRequest {
   route?: RouteOptions;
 }
 
+/** Resolved RouteScout geometry returned only for an active route search. */
+export interface RouteScoutResponse {
+  points: RouteOptions["points"];
+  corridorMeters: number;
+  originName?: string;
+  destinationName?: string;
+}
+
 export interface SearchResponse {
   events: Event[];
   found: number;
   tookMs: number;
+  /** Optional, backward-compatible metadata for rendering the walking route. */
+  routeScout?: RouteScoutResponse;
 }

@@ -1,3 +1,4 @@
+import Image from "next/image";
 import type { DiscoverOrganization, DiscoverVenue } from "@/types/discover";
 
 type DiscoverEntity = DiscoverOrganization | DiscoverVenue;
@@ -15,6 +16,17 @@ export default function DiscoverEntityCard({ entity }: DiscoverEntityCardProps) 
 
   return (
     <article className="border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950 rounded-xl p-5 flex flex-col gap-2">
+      {entity.imageUrl?.trim() && (
+        <div className="relative h-32 w-full overflow-hidden rounded-lg bg-stone-100 dark:bg-stone-900">
+          <Image
+            src={entity.imageUrl}
+            alt={`${entity.name} photo`}
+            fill
+            sizes="(min-width: 768px) 50vw, 100vw"
+            className="object-cover"
+          />
+        </div>
+      )}
       <p className="text-xs uppercase tracking-wider text-amber-600 dark:text-amber-400 font-semibold">
         {isOrg ? "Organization" : "Venue"}
       </p>

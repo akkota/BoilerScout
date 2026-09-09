@@ -185,7 +185,7 @@ function normalizeOrganization(
     description: stringValue(document.description) ?? "",
     categories,
     url: stringValue(document.url),
-    imageUrl: stringValue(document.image_url),
+    imageUrl: stringValue(document.photo_url),
     reasons: searchReasons(name, categories, query, hit, "Campus organization match"),
   };
 }
@@ -220,7 +220,7 @@ function normalizeVenue(
     address: stringValue(document.address),
     location: validLocation,
     url: stringValue(document.url),
-    imageUrl: stringValue(document.image_url),
+    imageUrl: stringValue(document.photo_url),
     reasons: searchReasons(name, [], query, hit, "Campus venue match"),
   };
 }

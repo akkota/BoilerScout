@@ -7,7 +7,7 @@ import ExampleQueries from "@/components/ExampleQueries";
 import FilterBar from "@/components/FilterBar";
 import EventList from "@/components/EventList";
 import { discoverCampus } from "@/lib/api/discover";
-import { searchEvents } from "@/lib/api/search";
+import { isMockMode, searchEvents } from "@/lib/api/search";
 import DiscoverGroups from "@/components/DiscoverGroups";
 import {
   CAMPUS_CENTER,
@@ -17,8 +17,10 @@ import {
   buildSearchFilters,
   countActiveFilters,
 } from "@/lib/filters";
+import { parseRouteIntent } from "@/lib/search/parseRouteIntent";
 import type { DiscoverOrganization, DiscoverVenue } from "@/types/discover";
 import { Event } from "@/types/event";
+import type { RouteScoutResponse } from "@/types/search";
 
 // Leaflet + CSS tiles — keep the map off the critical path so search is
 // interactive immediately. SSR is off because Leaflet touches `window`.
@@ -53,6 +55,8 @@ export default function Home() {
   const [ready, setReady] = useState(false);
 
   const [events, setEvents] = useState<Event[]>([]);
+  const [routeScout, setRouteScout] = useState<RouteScoutResponse | undefined>();
+  const [mockMode, setMockMode] = useState(false);
   const [organizations, setOrganizations] = useState<DiscoverOrganization[]>([]);
   const [venues, setVenues] = useState<DiscoverVenue[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -89,19 +93,27 @@ export default function Home() {
     setError(null);
 
     const trimmed = q.trim();
+    const routeIntent = parseRouteIntent(trimmed);
+    // RouteScout queries go through /api/search only; discover uses residual
+    // interest text (e.g. "AI") when present, otherwise skips federated cards.
+    const discoverQuery = routeIntent.isRouteQuery
+      ? routeIntent.contentQuery.trim()
+      : trimmed;
 
     try {
-      // Events stay on /api/search (filters + RouteScout). Federated orgs/venues
-      // come from /api/discover only when there is a text query.
+      // Events stay on /api/search (filters + NL RouteScout). Federated orgs/venues
+      // come from /api/discover for normal (or residual) text queries.
       const searchPromise = searchEvents({
         query: q,
         filters: buildSearchFilters(f),
       });
-      const discoverPromise = trimmed
-        ? discoverCampus({ query: trimmed, limitPerType: 6 }).catch((err) => {
-            console.error("Discover failed:", err);
-            return null;
-          })
+      const discoverPromise = discoverQuery
+        ? discoverCampus({ query: discoverQuery, limitPerType: 5 }).catch(
+            (err) => {
+              console.error("Discover failed:", err);
+              return null;
+            }
+          )
         : Promise.resolve(null);
 
       const [response, discover] = await Promise.all([
@@ -111,6 +123,7 @@ export default function Home() {
       if (requestId !== requestIdRef.current) return;
 
       setEvents(response.events);
+      setRouteScout(response.routeScout);
       setTookMs(response.tookMs);
       setOrganizations(
         discover?.groups.organizations.status === "ok"
@@ -138,6 +151,7 @@ export default function Home() {
       console.error("Search failed:", err);
       setError(err instanceof Error ? err.message : "Failed to load events");
       setEvents([]);
+      setRouteScout(undefined);
       setOrganizations([]);
       setVenues([]);
       setTookMs(null);
@@ -155,6 +169,7 @@ export default function Home() {
   useEffect(() => {
     const restored = initialQueryFromUrl();
     if (restored) setQuery(restored);
+    setMockMode(isMockMode());
     setReady(true);
   }, []);
 
@@ -224,8 +239,18 @@ export default function Home() {
           onSelectEvent={handleSelectFromMap}
           onHoverEvent={setHoveredEventId}
           userLocation={filters.nearMe ? (filters.center ?? CAMPUS_CENTER) : undefined}
+          routeScout={routeScout}
         />
       </section>
+
+      {mockMode && (
+        <div
+          role="status"
+          className="rounded-lg border-2 border-amber-500 bg-amber-100 px-4 py-2 text-sm font-bold tracking-wide text-amber-950 dark:bg-amber-950 dark:text-amber-100"
+        >
+          MOCK DATA — live Purdue and Typesense results are disabled in this browser.
+        </div>
+      )}
 
       {/* Results header */}
       <section className="flex items-center justify-between gap-3 pt-2">

@@ -1,5 +1,5 @@
 import { Event } from "@/types/event";
-import { formatEventTime } from "@/lib/format";
+import { formatEventTime, formatSourceLabel } from "@/lib/format";
 
 interface EventCardProps {
   event: Event;
@@ -23,6 +23,7 @@ export default function EventCard({
     typeof event.distanceMiles === "number" && Number.isFinite(event.distanceMiles);
   const hasDetour =
     typeof event.detourMinutes === "number" && Number.isFinite(event.detourMinutes);
+  const sourceLabel = formatSourceLabel(event.source);
 
   const highlight = isSelected
     ? "border-amber-500 ring-2 ring-amber-400/60 shadow-md"
@@ -50,9 +51,9 @@ export default function EventCard({
             {event.title?.trim() || "Untitled event"}
           </h3>
         </div>
-        {event.source?.trim() && (
+        {sourceLabel && (
           <span className="text-xs px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded shrink-0">
-            {event.source}
+            {sourceLabel}
           </span>
         )}
       </div>

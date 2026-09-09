@@ -13,7 +13,8 @@
     "ingest:events": "tsx scripts/ingest-events.ts",
     "ingest:all": "tsx scripts/ingest-all.ts",
     "synonyms": "tsx scripts/setup-synonyms.ts",
-    "test:pipeline": "tsx scripts/test-pipeline.ts"
+    "test:pipeline": "tsx scripts/test-pipeline.ts",
+    "test:stabilization": "tsx scripts/test-stabilization.ts"
   },
   "dependencies": {
     "@turf/boolean-point-in-polygon": "^7.4.0",

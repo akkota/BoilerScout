@@ -65,6 +65,17 @@ const PURDUE_BUILDINGS: BuildingEntry[] = [
     ],
   },
   {
+    name: "Hillenbrand Hall",
+    lat: 40.4267,
+    lng: -86.9267,
+    aliases: [
+      "hill",
+      "hillenbrand",
+      "hillenbrand hall",
+      "hillenbrand residence hall",
+    ],
+  },
+  {
     name: "Stewart Center",
     lat: 40.425084,
     lng: -86.912711,
